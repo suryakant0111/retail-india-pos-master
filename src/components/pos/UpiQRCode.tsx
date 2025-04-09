@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Check, Copy, Share } from 'lucide-react';
@@ -68,7 +68,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
       </CardHeader>
       <CardContent className="flex flex-col items-center pt-6 pb-4">
         <div className="bg-white p-3 rounded-lg shadow-sm mb-4">
-          <QRCode 
+          <QRCodeSVG 
             value={upiUrl} 
             size={200} 
             bgColor="#FFFFFF"
