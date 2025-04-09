@@ -16,7 +16,7 @@ interface UpiQRCodeProps {
 export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   amount,
   reference,
-  upiId = '7259538046@ybl', // Updated default UPI ID
+  upiId = '7259538046@ybl',
   onPaymentConfirmed,
 }) => {
   const [copied, setCopied] = useState(false);
