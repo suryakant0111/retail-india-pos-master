@@ -52,6 +52,8 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
         });
       } catch (error) {
         console.error('Error sharing:', error);
+        // Fallback to copy if sharing fails
+        handleCopyLink();
       }
     } else {
       handleCopyLink();

@@ -14,6 +14,7 @@ import { mockProducts, mockCustomers } from '@/data/mockData';
 import { X, Printer, Search, UserRound, Plus, Minus, Trash2, IndianRupee, CreditCard, Wallet, Barcode, UserPlus } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger, DrawerFooter } from '@/components/ui/drawer';
 
 const POS = () => {
   const { 
@@ -51,6 +52,7 @@ const POS = () => {
     address: '',
   });
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
   
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   
@@ -191,14 +193,21 @@ const POS = () => {
   };
   
   const handlePrintReceipt = () => {
-    // In a real application, this would send data to a printer API
-    // For now, we'll just show a toast and finalize the transaction
-    toast({
-      title: "Printing Receipt",
-      description: "Receipt sent to printer",
-      variant: "success",
-    });
-    finalizeTransaction();
+    // Set printing state to show printing animation/message
+    setIsPrintingReceipt(true);
+    
+    // Simulate the printing process
+    setTimeout(() => {
+      setIsPrintingReceipt(false);
+      
+      toast({
+        title: "Receipt Printed",
+        description: "Receipt has been sent to the printer",
+        variant: "success",
+      });
+      
+      finalizeTransaction();
+    }, 1500);
   };
   
   return (
@@ -685,9 +694,22 @@ const POS = () => {
               Cancel
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handlePrintReceipt}>
-                <Printer className="mr-2 h-4 w-4" />
-                Print Receipt
+              <Button 
+                variant="outline" 
+                onClick={handlePrintReceipt}
+                disabled={isPrintingReceipt}
+              >
+                {isPrintingReceipt ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span>
+                    Printing...
+                  </>
+                ) : (
+                  <>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print Receipt
+                  </>
+                )}
               </Button>
               <Button onClick={finalizeTransaction}>
                 Done
