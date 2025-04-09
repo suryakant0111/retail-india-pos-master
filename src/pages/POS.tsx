@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { useCart } from '@/contexts/CartContext';
 import { mockProducts, mockCustomers } from '@/data/mockData';
 import { X, Printer, Search, UserRound, Plus, Minus, Trash2, IndianRupee, CreditCard, Wallet, Barcode, UserPlus } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 const POS = () => {
   const { 
@@ -48,6 +50,7 @@ const POS = () => {
     email: '',
     address: '',
   });
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   
@@ -84,6 +87,8 @@ const POS = () => {
   };
   
   const handlePaymentConfirmed = () => {
+    setPaymentSuccess(true);
+    
     if (paymentMethod === 'cash') {
       setShowReceiptDialog(true);
     } else {
@@ -100,6 +105,7 @@ const POS = () => {
     
     setShowPaymentDialog(false);
     setShowReceiptDialog(false);
+    setPaymentSuccess(false);
     
     clearCart();
   };
@@ -182,6 +188,17 @@ const POS = () => {
       description: `${customerToAdd.name} has been added as a new customer`,
       variant: "success",
     });
+  };
+  
+  const handlePrintReceipt = () => {
+    // In a real application, this would send data to a printer API
+    // For now, we'll just show a toast and finalize the transaction
+    toast({
+      title: "Printing Receipt",
+      description: "Receipt sent to printer",
+      variant: "success",
+    });
+    finalizeTransaction();
   };
   
   return (
@@ -280,53 +297,51 @@ const POS = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            <Dialog open={newCustomerDialog} onOpenChange={setNewCustomerDialog}>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex-grow flex items-center justify-between" size="sm">
-                    <div className="flex items-center">
-                      <UserRound className="h-4 w-4 mr-2" />
-                      {customer ? customer.name : 'Select Customer'}
-                    </div>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Select Customer</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 max-h-[60vh] overflow-auto">
-                    <Button 
-                      variant="outline" 
-                      className="w-full justify-start"
-                      onClick={() => handleSelectCustomer(null)}
-                    >
-                      Walk-in Customer
-                    </Button>
-                    {mockCustomers.map((cust) => (
-                      <Card key={cust.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleSelectCustomer(cust)}>
-                        <CardContent className="p-4">
-                          <div className="font-medium">{cust.name}</div>
-                          <div className="text-sm text-muted-foreground">{cust.phone}</div>
-                          {cust.email && <div className="text-sm text-muted-foreground">{cust.email}</div>}
-                          {cust.loyaltyPoints !== undefined && (
-                            <div className="mt-1 text-xs">Loyalty Points: {cust.loyaltyPoints}</div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="flex-grow flex items-center justify-between" size="sm">
+                  <div className="flex items-center">
+                    <UserRound className="h-4 w-4 mr-2" />
+                    {customer ? customer.name : 'Select Customer'}
                   </div>
-                </DialogContent>
-              </Dialog>
-              
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={() => setNewCustomerDialog(true)}
-                title="Add new customer"
-              >
-                <UserPlus className="h-4 w-4" />
-              </Button>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Select Customer</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 max-h-[60vh] overflow-auto">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    onClick={() => handleSelectCustomer(null)}
+                  >
+                    Walk-in Customer
+                  </Button>
+                  {mockCustomers.map((cust) => (
+                    <Card key={cust.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleSelectCustomer(cust)}>
+                      <CardContent className="p-4">
+                        <div className="font-medium">{cust.name}</div>
+                        <div className="text-sm text-muted-foreground">{cust.phone}</div>
+                        {cust.email && <div className="text-sm text-muted-foreground">{cust.email}</div>}
+                        {cust.loyaltyPoints !== undefined && (
+                          <div className="mt-1 text-xs">Loyalty Points: {cust.loyaltyPoints}</div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </DialogContent>
             </Dialog>
+            
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => setNewCustomerDialog(true)}
+              title="Add new customer"
+            >
+              <UserPlus className="h-4 w-4" />
+            </Button>
           </div>
           
           <Dialog open={newCustomerDialog} onOpenChange={setNewCustomerDialog}>
@@ -530,6 +545,15 @@ const POS = () => {
             </DialogTitle>
           </DialogHeader>
           
+          {paymentSuccess && (
+            <Alert variant="success" className="mb-4">
+              <AlertTitle>Payment Successful</AlertTitle>
+              <AlertDescription>
+                Transaction completed successfully.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {paymentMethod === 'upi' ? (
             <UpiQRCode 
               amount={total} 
@@ -661,13 +685,7 @@ const POS = () => {
               Cancel
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => {
-                toast({
-                  title: "Printing Receipt",
-                  description: "Receipt sent to printer",
-                });
-                finalizeTransaction();
-              }}>
+              <Button variant="outline" onClick={handlePrintReceipt}>
                 <Printer className="mr-2 h-4 w-4" />
                 Print Receipt
               </Button>
