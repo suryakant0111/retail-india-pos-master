@@ -1,17 +1,17 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TabsContent, Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ProductCard } from '@/components/products/ProductCard';
 import { UpiQRCode } from '@/components/pos/UpiQRCode';
 import { Customer, CartItem, Product } from '@/types';
 import { useCart } from '@/contexts/CartContext';
 import { mockProducts, mockCustomers } from '@/data/mockData';
-import { X, Printer, Search, UserRound, Plus, Minus, Trash2, IndianRupee, CreditCard, Wallet } from 'lucide-react';
+import { X, Printer, Search, UserRound, Plus, Minus, Trash2, IndianRupee, CreditCard, Wallet, Barcode, UserPlus } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 const POS = () => {
   const { 
@@ -30,6 +30,7 @@ const POS = () => {
     setDiscount
   } = useCart();
   
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('all');
   const [activeTab, setActiveTab] = useState('products');
@@ -37,49 +38,154 @@ const POS = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi' | 'card'>('cash');
   const [discountInput, setDiscountInput] = useState(discountValue.toString());
   const [discountTypeInput, setDiscountTypeInput] = useState<'percentage' | 'fixed'>(discountType);
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false);
+  const [barcodeScannerMode, setBarcodeScannerMode] = useState(false);
+  const [barcodeValue, setBarcodeValue] = useState('');
+  const [newCustomerDialog, setNewCustomerDialog] = useState(false);
+  const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+  });
   
-  // Generate unique categories from products
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  
+  useEffect(() => {
+    if (barcodeScannerMode && barcodeInputRef.current) {
+      barcodeInputRef.current.focus();
+    }
+  }, [barcodeScannerMode]);
+  
   const categories = ['all', ...Array.from(new Set(mockProducts.map(p => p.category)))];
   
-  // Filter products based on search and category
   const filteredProducts = mockProducts.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (product.barcode && product.barcode.includes(searchTerm));
     const matchesCategory = category === 'all' || product.category === category;
     return matchesSearch && matchesCategory;
   });
   
-  // Handle discount changes
   const handleDiscountChange = () => {
     const value = parseFloat(discountInput) || 0;
     setDiscount(value, discountTypeInput);
   };
   
-  // Handle product search
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
   
-  // Handle customer selection
   const handleSelectCustomer = (customer: Customer | null) => {
     setCustomer(customer);
+    toast({
+      title: "Customer Selected",
+      description: customer ? `${customer.name} added to transaction` : "Walk-in customer selected",
+    });
   };
   
-  // Handle payment confirmation
   const handlePaymentConfirmed = () => {
-    // In a real app, this would save the invoice to the database
-    // For now, we'll just clear the cart and close the dialog
-    clearCart();
-    setShowPaymentDialog(false);
+    if (paymentMethod === 'cash') {
+      setShowReceiptDialog(true);
+    } else {
+      finalizeTransaction();
+    }
   };
   
-  // Generate a unique reference ID for UPI payments
+  const finalizeTransaction = () => {
+    toast({
+      title: "Payment Successful",
+      description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()}`,
+      variant: "success",
+    });
+    
+    setShowPaymentDialog(false);
+    setShowReceiptDialog(false);
+    
+    clearCart();
+  };
+  
   const generateReference = () => {
     return `INV${Date.now().toString().slice(-8)}`;
   };
   
+  const handleBarcodeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBarcodeValue(e.target.value);
+  };
+  
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && barcodeValue) {
+      e.preventDefault();
+      processBarcodeInput();
+    }
+  };
+  
+  const processBarcodeInput = () => {
+    if (!barcodeValue.trim()) return;
+    
+    const product = mockProducts.find(p => p.barcode === barcodeValue.trim());
+    
+    if (product) {
+      addItem(product, 1);
+      setBarcodeValue('');
+      toast({
+        title: "Product Added",
+        description: `${product.name} added to cart via barcode`,
+      });
+    } else {
+      toast({
+        title: "Product Not Found",
+        description: `No product found with barcode ${barcodeValue}`,
+        variant: "destructive",
+      });
+    }
+    
+    if (barcodeInputRef.current) {
+      barcodeInputRef.current.focus();
+    }
+  };
+  
+  const handleAddNewCustomer = () => {
+    if (!newCustomer.name || !newCustomer.phone) {
+      toast({
+        title: "Missing Information",
+        description: "Name and phone number are required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newCustomerId = `CUST${Date.now().toString().slice(-6)}`;
+    
+    const customerToAdd: Customer = {
+      id: newCustomerId,
+      name: newCustomer.name,
+      phone: newCustomer.phone,
+      email: newCustomer.email || undefined,
+      address: newCustomer.address || undefined,
+      loyaltyPoints: 0,
+      totalPurchases: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    setCustomer(customerToAdd);
+    setNewCustomerDialog(false);
+    setNewCustomer({
+      name: '',
+      phone: '',
+      email: '',
+      address: '',
+    });
+    
+    toast({
+      title: "Customer Added",
+      description: `${customerToAdd.name} has been added as a new customer`,
+      variant: "success",
+    });
+  };
+  
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)]">
-      {/* Left side - Product Browser */}
       <div className="lg:w-2/3 p-4 overflow-auto">
         <div className="mb-4">
           <div className="flex gap-2 mb-4">
@@ -104,7 +210,36 @@ const POS = () => {
                 ))}
               </SelectContent>
             </Select>
+            
+            <Button 
+              variant={barcodeScannerMode ? "default" : "outline"} 
+              size="icon" 
+              onClick={() => setBarcodeScannerMode(!barcodeScannerMode)}
+              title="Toggle barcode scanner"
+            >
+              <Barcode className="h-4 w-4" />
+            </Button>
           </div>
+          
+          {barcodeScannerMode && (
+            <div className="mb-4 flex gap-2">
+              <div className="relative flex-1">
+                <Barcode className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={barcodeInputRef}
+                  placeholder="Scan barcode..."
+                  className="pl-9"
+                  value={barcodeValue}
+                  onChange={handleBarcodeInput}
+                  onKeyDown={handleBarcodeKeyDown}
+                  autoFocus
+                />
+              </div>
+              <Button onClick={processBarcodeInput} disabled={!barcodeValue.trim()}>
+                Add Item
+              </Button>
+            </div>
+          )}
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="w-full">
@@ -133,7 +268,6 @@ const POS = () => {
         </div>
       </div>
       
-      {/* Right side - Cart & Checkout */}
       <div className="lg:w-1/3 border-l flex flex-col h-full">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
@@ -145,38 +279,124 @@ const POS = () => {
             )}
           </div>
           
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="w-full flex items-center" size="sm">
-                <UserRound className="h-4 w-4 mr-2" />
-                {customer ? customer.name : 'Select Customer'}
+          <div className="flex items-center gap-2">
+            <Dialog open={newCustomerDialog} onOpenChange={setNewCustomerDialog}>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="flex-grow flex items-center justify-between" size="sm">
+                    <div className="flex items-center">
+                      <UserRound className="h-4 w-4 mr-2" />
+                      {customer ? customer.name : 'Select Customer'}
+                    </div>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Select Customer</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 max-h-[60vh] overflow-auto">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={() => handleSelectCustomer(null)}
+                    >
+                      Walk-in Customer
+                    </Button>
+                    {mockCustomers.map((cust) => (
+                      <Card key={cust.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleSelectCustomer(cust)}>
+                        <CardContent className="p-4">
+                          <div className="font-medium">{cust.name}</div>
+                          <div className="text-sm text-muted-foreground">{cust.phone}</div>
+                          {cust.email && <div className="text-sm text-muted-foreground">{cust.email}</div>}
+                          {cust.loyaltyPoints !== undefined && (
+                            <div className="mt-1 text-xs">Loyalty Points: {cust.loyaltyPoints}</div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => setNewCustomerDialog(true)}
+                title="Add new customer"
+              >
+                <UserPlus className="h-4 w-4" />
               </Button>
-            </DialogTrigger>
+            </Dialog>
+          </div>
+          
+          <Dialog open={newCustomerDialog} onOpenChange={setNewCustomerDialog}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Select Customer</DialogTitle>
+                <DialogTitle>Add New Customer</DialogTitle>
+                <DialogDescription>
+                  Fill in the customer details below.
+                </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 max-h-[60vh] overflow-auto">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => handleSelectCustomer(null)}
-                >
-                  Walk-in Customer
-                </Button>
-                {mockCustomers.map((cust) => (
-                  <Card key={cust.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleSelectCustomer(cust)}>
-                    <CardContent className="p-4">
-                      <div className="font-medium">{cust.name}</div>
-                      <div className="text-sm text-muted-foreground">{cust.phone}</div>
-                      {cust.email && <div className="text-sm text-muted-foreground">{cust.email}</div>}
-                      {cust.loyaltyPoints !== undefined && (
-                        <div className="mt-1 text-xs">Loyalty Points: {cust.loyaltyPoints}</div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label htmlFor="name" className="text-sm font-medium">
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    id="name"
+                    value={newCustomer.name}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                    placeholder="Customer name"
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label htmlFor="phone" className="text-sm font-medium">
+                    Phone <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    id="phone"
+                    value={newCustomer.phone}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                    placeholder="Phone number"
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium">
+                    Email
+                  </label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newCustomer.email || ''}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                    placeholder="Email address (optional)"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label htmlFor="address" className="text-sm font-medium">
+                    Address
+                  </label>
+                  <Input
+                    id="address"
+                    value={newCustomer.address || ''}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                    placeholder="Address (optional)"
+                  />
+                </div>
               </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setNewCustomerDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddNewCustomer}>
+                  Add Customer
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
@@ -189,7 +409,7 @@ const POS = () => {
               </div>
               <h3 className="font-medium">Cart is empty</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Add products from the left panel
+                Add products from the left panel or use the barcode scanner
               </p>
             </div>
           ) : (
@@ -300,7 +520,6 @@ const POS = () => {
         </div>
       </div>
       
-      {/* Payment Processing Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -342,10 +561,6 @@ const POS = () => {
                   Cancel
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={handlePaymentConfirmed}>
-                    <Printer className="mr-2 h-4 w-4" />
-                    Print Receipt
-                  </Button>
                   <Button onClick={handlePaymentConfirmed}>
                     Mark as Paid
                   </Button>
@@ -355,11 +570,118 @@ const POS = () => {
           )}
         </DialogContent>
       </Dialog>
+      
+      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Receipt</DialogTitle>
+            <DialogDescription>
+              Transaction #{generateReference()}
+              <span className="block text-xs mt-1">
+                {new Date().toLocaleString('en-IN')}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="border-t border-b py-4 my-4">
+            <div className="text-center mb-4">
+              <h3 className="font-bold text-lg">RETAIL POS</h3>
+              <p className="text-sm text-muted-foreground">123 Main Street, City</p>
+              <p className="text-sm text-muted-foreground">Phone: 123-456-7890</p>
+              {customer && <p className="text-sm mt-2">Customer: {customer.name}</p>}
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm font-medium">
+                <span>Item</span>
+                <div className="flex">
+                  <span className="w-16 text-right">Qty</span>
+                  <span className="w-20 text-right">Amount</span>
+                </div>
+              </div>
+              
+              {items.map((item, index) => (
+                <div key={index} className="flex justify-between text-sm">
+                  <div className="flex-1">
+                    <div>{item.product.name}</div>
+                    {item.variant && (
+                      <div className="text-xs text-muted-foreground">
+                        {Object.entries(item.variant.attributes)
+                          .map(([key, value]) => `${key}: ${value}`)
+                          .join(', ')}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      ₹{item.price.toFixed(2)} x {item.quantity}
+                    </div>
+                  </div>
+                  <div className="flex">
+                    <span className="w-16 text-right">{item.quantity}</span>
+                    <span className="w-20 text-right">
+                      ₹{(item.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="border-t mt-4 pt-4 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span>Subtotal</span>
+                <span>₹{subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Tax</span>
+                <span>₹{taxTotal.toFixed(2)}</span>
+              </div>
+              {discountValue > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Discount {discountType === 'percentage' ? `(${discountValue}%)` : ''}</span>
+                  <span>-₹{(discountType === 'percentage' ? (subtotal + taxTotal) * (discountValue / 100) : discountValue).toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold pt-2 text-base">
+                <span>Total</span>
+                <span>₹{total.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm pt-2">
+                <span>Payment Method</span>
+                <span>{paymentMethod.toUpperCase()}</span>
+              </div>
+            </div>
+            
+            <div className="text-center mt-6">
+              <p className="text-xs text-muted-foreground">Thank you for your purchase!</p>
+              <p className="text-xs text-muted-foreground">Visit again</p>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex justify-between">
+            <Button variant="outline" onClick={() => setShowReceiptDialog(false)}>
+              Cancel
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => {
+                toast({
+                  title: "Printing Receipt",
+                  description: "Receipt sent to printer",
+                });
+                finalizeTransaction();
+              }}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print Receipt
+              </Button>
+              <Button onClick={finalizeTransaction}>
+                Done
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-// Cart Item Card Component
 const CartItemCard: React.FC<{
   item: CartItem;
   index: number;
@@ -428,7 +750,6 @@ const CartItemCard: React.FC<{
   );
 };
 
-// ShoppingCart icon component
 const ShoppingCart = ({ className }: { className?: string }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 

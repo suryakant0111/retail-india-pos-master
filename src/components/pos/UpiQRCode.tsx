@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ interface UpiQRCodeProps {
 export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   amount,
   reference,
-  upiId = 'mystore@ybl',
+  upiId = '7259538046@ybl', // Updated default UPI ID
   onPaymentConfirmed,
 }) => {
   const [copied, setCopied] = useState(false);
