@@ -8,9 +8,14 @@ import { Input } from '@/components/ui/input';
 import { mockProducts, mockCustomers, mockInvoices } from '@/data/mockData';
 import { Search, Plus, BarChart4, Trash2, Edit, Package, Users, FileText } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
 
 const AdminPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAddProductDialog, setShowAddProductDialog] = useState(false);
+  const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false);
   const { toast } = useToast();
   
   // Filter products based on search term
@@ -32,11 +37,17 @@ const AdminPage: React.FC = () => {
   );
   
   const handleAddNew = (type: string) => {
-    toast({
-      title: `Add New ${type}`,
-      description: `This would open a form to add a new ${type.toLowerCase()}`,
-      variant: "default",
-    });
+    if (type === 'Product') {
+      setShowAddProductDialog(true);
+    } else if (type === 'Customer') {
+      setShowAddCustomerDialog(true);
+    } else {
+      toast({
+        title: `Add New ${type}`,
+        description: `This would open a form to add a new ${type.toLowerCase()}`,
+        variant: "default",
+      });
+    }
   };
   
   const handleEdit = (id: string, type: string) => {
@@ -50,10 +61,47 @@ const AdminPage: React.FC = () => {
   const handleDelete = (id: string, type: string) => {
     toast({
       title: `Delete ${type}`,
-      description: `Are you sure you want to delete this ${type.toLowerCase()}?`,
+      description: `This action would remove this ${type.toLowerCase()} from the database.`,
       variant: "destructive",
     });
   };
+
+  const handleAddProductSubmit = (data: any) => {
+    toast({
+      title: "Product Added",
+      description: `The product ${data.name} has been added successfully.`,
+      variant: "success",
+    });
+    setShowAddProductDialog(false);
+  };
+
+  const handleAddCustomerSubmit = (data: any) => {
+    toast({
+      title: "Customer Added",
+      description: `The customer ${data.name} has been added successfully.`,
+      variant: "success",
+    });
+    setShowAddCustomerDialog(false);
+  };
+
+  // Form for adding a new product
+  const productForm = useForm({
+    defaultValues: {
+      name: '',
+      category: '',
+      price: '',
+      stock: ''
+    }
+  });
+
+  // Form for adding a new customer
+  const customerForm = useForm({
+    defaultValues: {
+      name: '',
+      phone: '',
+      email: ''
+    }
+  });
 
   return (
     <div className="p-6">
@@ -263,6 +311,129 @@ const AdminPage: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Add Product Dialog */}
+      <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Product</DialogTitle>
+          </DialogHeader>
+          <Form {...productForm}>
+            <form onSubmit={productForm.handleSubmit(handleAddProductSubmit)} className="space-y-4">
+              <FormField
+                control={productForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Product Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter product name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={productForm.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter category" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={productForm.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Price (₹)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Enter price" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={productForm.control}
+                name="stock"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stock</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Enter stock quantity" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="submit">Add Product</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Customer Dialog */}
+      <Dialog open={showAddCustomerDialog} onOpenChange={setShowAddCustomerDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Customer</DialogTitle>
+          </DialogHeader>
+          <Form {...customerForm}>
+            <form onSubmit={customerForm.handleSubmit(handleAddCustomerSubmit)} className="space-y-4">
+              <FormField
+                control={customerForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Customer Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter customer name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={customerForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter phone number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={customerForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="Enter email address" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="submit">Add Customer</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
