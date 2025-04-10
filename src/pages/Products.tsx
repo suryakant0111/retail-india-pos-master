@@ -1,16 +1,15 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product } from '@/types';
 import { mockProducts } from '@/data/mockData';
-import { PlusCircle, Search, Filter } from 'lucide-react';
+import { PlusCircle, Search, Filter, Image, Upload, Barcode } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
-import { Barcode } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const Products = () => {
@@ -18,6 +17,8 @@ const Products = () => {
   const [category, setCategory] = useState<string>('all');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [productImage, setProductImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   
   useEffect(() => {
@@ -60,6 +61,21 @@ const Products = () => {
     }
   });
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setProductImage(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleAddProductSubmit = (data: any) => {
     const newProduct: Product = {
       id: `PRD${Date.now().toString().slice(-6)}`,
@@ -73,6 +89,7 @@ const Products = () => {
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
+      image: productImage || undefined,
     };
     
     setProducts([...products, newProduct]);
@@ -91,6 +108,7 @@ const Products = () => {
       variant: "default",
     });
     setShowAddProductDialog(false);
+    setProductImage(null);
     productForm.reset();
   };
   
@@ -154,7 +172,7 @@ const Products = () => {
       
       {/* Add Product Dialog */}
       <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add New Product</DialogTitle>
             <DialogDescription>
@@ -176,6 +194,7 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={productForm.control}
                 name="category"
@@ -189,6 +208,7 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={productForm.control}
                 name="description"
@@ -202,6 +222,7 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={productForm.control}
                 name="barcode"
@@ -224,6 +245,62 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
+              <FormItem>
+                <FormLabel>Product Image</FormLabel>
+                <div className="mt-1 flex flex-col items-center justify-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                  />
+                  
+                  {productImage ? (
+                    <div className="relative w-full h-40 bg-gray-100 rounded-md overflow-hidden">
+                      <img 
+                        src={productImage} 
+                        alt="Product preview" 
+                        className="w-full h-full object-contain"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="absolute bottom-2 right-2"
+                        onClick={() => setProductImage(null)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div 
+                      className="w-full h-40 border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={triggerFileInput}
+                    >
+                      <Image className="h-10 w-10 text-gray-300" />
+                      <div className="text-sm text-muted-foreground text-center">
+                        <p>Click to upload image</p>
+                        <p className="text-xs">JPG, PNG, GIF up to 5MB</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!productImage && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={triggerFileInput}
+                      className="mt-2"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Image
+                    </Button>
+                  )}
+                </div>
+              </FormItem>
+              
               <FormField
                 control={productForm.control}
                 name="price"
@@ -237,6 +314,7 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={productForm.control}
                 name="stock"
@@ -250,6 +328,7 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
               <DialogFooter>
                 <Button type="submit">Add Product</Button>
               </DialogFooter>

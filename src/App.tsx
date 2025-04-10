@@ -13,6 +13,11 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
+import Customers from "./pages/Customers";
+import Invoices from "./pages/Invoices";
+import Transactions from "./pages/Transactions";
+import Inventory from "./pages/Inventory";
+import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
@@ -36,18 +41,16 @@ const App = () => (
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/products" element={<Products />} />
-                <Route path="/admin" element={<Admin />} />
-                
-                {/* Add other protected routes here */}
-                <Route path="/customers" element={<div className="p-6"><h1 className="text-3xl font-bold">Customers (Coming Soon)</h1></div>} />
-                <Route path="/invoices" element={<div className="p-6"><h1 className="text-3xl font-bold">Invoices (Coming Soon)</h1></div>} />
-                <Route path="/transactions" element={<div className="p-6"><h1 className="text-3xl font-bold">Transactions (Coming Soon)</h1></div>} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/invoices" element={<Invoices />} />
+                <Route path="/transactions" element={<Transactions />} />
               </Route>
               
               {/* Admin routes */}
               <Route element={<AuthGuard requireAdmin={true} />}>
-                <Route path="/inventory" element={<div className="p-6"><h1 className="text-3xl font-bold">Inventory (Admin Only)</h1></div>} />
-                <Route path="/settings" element={<div className="p-6"><h1 className="text-3xl font-bold">Settings (Admin Only)</h1></div>} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
               
               {/* Catch-all route */}

@@ -2,8 +2,10 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Printer } from 'lucide-react';
+import { Printer, Download } from 'lucide-react';
 import { CartItem, Customer } from '@/types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ReceiptDialogProps {
   open: boolean;
@@ -38,6 +40,76 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
   onFinalize,
   isPrintingReceipt
 }) => {
+  
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    doc.text('RETAIL POS', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.text('123 Main Street, City', 105, 30, { align: 'center' });
+    doc.text('Phone: 123-456-7890', 105, 35, { align: 'center' });
+    
+    // Add invoice details
+    doc.setFontSize(12);
+    doc.text(`Invoice: #${reference}`, 14, 45);
+    doc.text(`Date: ${new Date().toLocaleString('en-IN')}`, 14, 50);
+    
+    if (customer) {
+      doc.text(`Customer: ${customer.name}`, 14, 55);
+      if (customer.phone) doc.text(`Phone: ${customer.phone}`, 14, 60);
+    }
+    
+    // Create table with items
+    const tableColumn = ["Item", "Price", "Qty", "Total"];
+    const tableRows: any[] = [];
+    
+    items.forEach(item => {
+      const itemData = [
+        item.product.name,
+        `₹${item.price.toFixed(2)}`,
+        item.quantity,
+        `₹${(item.price * item.quantity).toFixed(2)}`
+      ];
+      tableRows.push(itemData);
+    });
+    
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: customer ? 65 : 55,
+      theme: 'grid',
+    });
+    
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    
+    // Add totals
+    doc.text(`Subtotal: ₹${subtotal.toFixed(2)}`, 150, finalY, { align: 'right' });
+    doc.text(`Tax: ₹${taxTotal.toFixed(2)}`, 150, finalY + 5, { align: 'right' });
+    
+    if (discountValue > 0) {
+      const discountAmount = discountType === 'percentage' 
+        ? (subtotal + taxTotal) * (discountValue / 100) 
+        : discountValue;
+      doc.text(`Discount: -₹${discountAmount.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
+      doc.text(`Total: ₹${total.toFixed(2)}`, 150, finalY + 15, { align: 'right' });
+      doc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 150, finalY + 20, { align: 'right' });
+    } else {
+      doc.text(`Total: ₹${total.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
+      doc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 150, finalY + 15, { align: 'right' });
+    }
+    
+    // Add thank you note
+    doc.setFontSize(10);
+    doc.text('Thank you for your purchase!', 105, finalY + 30, { align: 'center' });
+    doc.text('Visit again', 105, finalY + 35, { align: 'center' });
+    
+    // Save the PDF
+    doc.save(`invoice-${reference}.pdf`);
+  };
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -129,6 +201,13 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
             Cancel
           </Button>
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={generatePDF}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
+            </Button>
             <Button 
               variant="outline" 
               onClick={onPrintReceipt}

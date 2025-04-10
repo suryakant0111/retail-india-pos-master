@@ -32,6 +32,7 @@ const POS = () => {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
   const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [invoiceReference, setInvoiceReference] = useState('');
   
   useEffect(() => {
     // Try to load products from localStorage
@@ -69,11 +70,35 @@ const POS = () => {
   };
   
   const finalizeTransaction = () => {
-    toast({
-      title: "Payment Successful",
-      description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()}`,
-      variant: "success",
-    });
+    // Save invoice data to localStorage
+    try {
+      const newInvoice = {
+        id: Date.now().toString(),
+        invoiceNumber: invoiceReference,
+        items: [...items],
+        customer: customer,
+        subtotal: subtotal,
+        taxTotal: taxTotal,
+        discountValue: discountValue,
+        discountType: discountType,
+        total: total,
+        paymentMethod: paymentMethod,
+        paymentStatus: 'paid',
+        createdBy: 'admin',
+        createdAt: new Date(),
+      };
+      
+      const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
+      localStorage.setItem('invoices', JSON.stringify([...storedInvoices, newInvoice]));
+      
+      toast({
+        title: "Payment Successful",
+        description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()}`,
+        variant: "success",
+      });
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+    }
     
     setShowPaymentDialog(false);
     setShowReceiptDialog(false);
@@ -83,12 +108,19 @@ const POS = () => {
   };
   
   const generateReference = () => {
-    return `INV${Date.now().toString().slice(-8)}`;
+    const ref = `INV${Date.now().toString().slice(-8)}`;
+    setInvoiceReference(ref);
+    return ref;
   };
   
   const openPaymentDialog = (method: 'cash' | 'upi' | 'card') => {
     setPaymentMethod(method);
     setShowPaymentDialog(true);
+    
+    // Generate reference if not already generated
+    if (!invoiceReference) {
+      generateReference();
+    }
   };
   
   const handlePrintReceipt = () => {
@@ -156,7 +188,7 @@ const POS = () => {
         discountType={discountType}
         total={total}
         paymentMethod={paymentMethod}
-        reference={generateReference()}
+        reference={invoiceReference || generateReference()}
         onPrintReceipt={handlePrintReceipt}
         onFinalize={finalizeTransaction}
         isPrintingReceipt={isPrintingReceipt}

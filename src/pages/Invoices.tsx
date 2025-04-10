@@ -1,21 +1,47 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { mockInvoices } from '@/data/mockData';
-import { Search, Eye, Download, Calendar } from 'lucide-react';
+import { Search, Eye, Download, Calendar, FileDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import { Invoice } from '@/types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Invoices = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Load invoices from localStorage
+    try {
+      const storedInvoices = localStorage.getItem('invoices');
+      if (storedInvoices) {
+        const parsedInvoices = JSON.parse(storedInvoices);
+        // Convert string dates back to Date objects
+        const processedInvoices = parsedInvoices.map((invoice: any) => ({
+          ...invoice,
+          createdAt: new Date(invoice.createdAt)
+        }));
+        
+        setInvoices([...mockInvoices, ...processedInvoices]);
+      } else {
+        setInvoices([...mockInvoices]);
+      }
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+      setInvoices([...mockInvoices]);
+    }
+  }, []);
   
   // Filter invoices based on search term and status
-  const filteredInvoices = mockInvoices.filter(invoice => {
+  const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = 
       invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (invoice.customer && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -25,18 +51,90 @@ const Invoices = () => {
     return matchesSearch && matchesStatus;
   });
   
-  const handleViewInvoice = (id: string) => {
+  const generateInvoicePDF = (invoice: Invoice) => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    doc.text('RETAIL POS', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.text('123 Main Street, City', 105, 30, { align: 'center' });
+    doc.text('Phone: 123-456-7890', 105, 35, { align: 'center' });
+    
+    // Add invoice details
+    doc.setFontSize(12);
+    doc.text(`Invoice: #${invoice.invoiceNumber}`, 14, 45);
+    doc.text(`Date: ${invoice.createdAt.toLocaleString('en-IN')}`, 14, 50);
+    
+    if (invoice.customer) {
+      doc.text(`Customer: ${invoice.customer.name}`, 14, 55);
+      if (invoice.customer.phone) doc.text(`Phone: ${invoice.customer.phone}`, 14, 60);
+    }
+    
+    // Create table with items
+    const tableColumn = ["Item", "Price", "Qty", "Total"];
+    const tableRows: any[] = [];
+    
+    invoice.items.forEach(item => {
+      const itemData = [
+        item.product.name,
+        `₹${item.price.toFixed(2)}`,
+        item.quantity,
+        `₹${(item.price * item.quantity).toFixed(2)}`
+      ];
+      tableRows.push(itemData);
+    });
+    
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: invoice.customer ? 65 : 55,
+      theme: 'grid',
+    });
+    
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    
+    // Add totals
+    doc.text(`Subtotal: ₹${invoice.subtotal.toFixed(2)}`, 150, finalY, { align: 'right' });
+    doc.text(`Tax: ₹${invoice.taxTotal.toFixed(2)}`, 150, finalY + 5, { align: 'right' });
+    
+    if (invoice.discountValue > 0) {
+      const discountAmount = invoice.discountType === 'percentage' 
+        ? (invoice.subtotal + invoice.taxTotal) * (invoice.discountValue / 100) 
+        : invoice.discountValue;
+      
+      doc.text(`Discount: -₹${discountAmount.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
+      doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY + 15, { align: 'right' });
+      doc.text(`Payment Method: ${invoice.paymentMethod.toUpperCase()}`, 150, finalY + 20, { align: 'right' });
+    } else {
+      doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
+      doc.text(`Payment Method: ${invoice.paymentMethod.toUpperCase()}`, 150, finalY + 15, { align: 'right' });
+    }
+    
+    // Add thank you note
+    doc.setFontSize(10);
+    doc.text('Thank you for your business!', 105, finalY + 30, { align: 'center' });
+    
+    // Save the PDF
+    doc.save(`invoice-${invoice.invoiceNumber}.pdf`);
+  };
+  
+  const handleViewInvoice = (invoice: Invoice) => {
+    // In a real app, this would open a detailed view
     toast({
       title: "View Invoice",
-      description: `Opening invoice details for invoice ID: ${id}`,
+      description: `Viewing details for invoice #${invoice.invoiceNumber}`,
       variant: "default",
     });
   };
   
-  const handleDownloadInvoice = (id: string) => {
+  const handleDownloadInvoice = (invoice: Invoice) => {
+    generateInvoicePDF(invoice);
+    
     toast({
-      title: "Download Invoice",
-      description: `Downloading invoice PDF for invoice ID: ${id}`,
+      title: "Invoice Downloaded",
+      description: `Invoice #${invoice.invoiceNumber} has been downloaded as PDF`,
       variant: "default",
     });
   };
@@ -115,11 +213,11 @@ const Invoices = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleViewInvoice(invoice.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleViewInvoice(invoice)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDownloadInvoice(invoice.id)}>
-                          <Download className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" onClick={() => handleDownloadInvoice(invoice)}>
+                          <FileDown className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
