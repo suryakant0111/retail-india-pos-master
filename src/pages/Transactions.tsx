@@ -1,59 +1,83 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockInvoices } from '@/data/mockData';
-import { Search, Calendar, ArrowDownUp, PieChart } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+
+interface Transaction {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  amount: number;
+  paymentMethod: string;
+  customer: string;
+  createdAt: Date;
+}
 
 const Transactions = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const { toast } = useToast();
-  
-  // Generate transaction data from invoices
-  const transactions = mockInvoices.map(invoice => ({
-    id: invoice.id,
-    date: invoice.createdAt,
-    invoiceNumber: invoice.invoiceNumber,
-    amount: invoice.total,
-    paymentMethod: invoice.paymentMethod,
-    customer: invoice.customer ? invoice.customer.name : 'Walk-in Customer',
-    status: invoice.paymentStatus
-  }));
+
+  useEffect(() => {
+    // Load transactions from localStorage
+    try {
+      const storedTransactions = localStorage.getItem('transactions');
+      if (storedTransactions) {
+        const parsed = JSON.parse(storedTransactions);
+        
+        // Convert string dates back to Date objects
+        const processedTransactions = parsed.map((tx: any) => ({
+          ...tx,
+          createdAt: new Date(tx.createdAt)
+        }));
+        
+        setTransactions(processedTransactions);
+      } else {
+        setTransactions([]);
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      setTransactions([]);
+    }
+  }, []);
   
   // Filter transactions based on search term and payment method
-  const filteredTransactions = transactions.filter(transaction => {
+  const filteredTransactions = transactions.filter(tx => {
     const matchesSearch = 
-      transaction.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.customer.toLowerCase().includes(searchTerm.toLowerCase());
+      tx.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tx.customer.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesPaymentMethod = paymentMethod === 'all' || transaction.paymentMethod === paymentMethod;
+    const matchesMethod = methodFilter === 'all' || tx.paymentMethod === methodFilter;
     
-    return matchesSearch && matchesPaymentMethod;
+    return matchesSearch && matchesMethod;
   });
   
-  const handleViewTransaction = (id: string) => {
-    toast({
-      title: "View Transaction",
-      description: `Opening transaction details for ID: ${id}`,
-      variant: "default",
-    });
-  };
+  // Sort transactions by date (newest first)
+  const sortedTransactions = [...filteredTransactions].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+  );
   
-  // Calculate transaction statistics
-  const totalTransactions = filteredTransactions.length;
-  const totalAmount = filteredTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
-  const cashTransactions = filteredTransactions.filter(t => t.paymentMethod === 'cash').length;
-  const upiTransactions = filteredTransactions.filter(t => t.paymentMethod === 'upi').length;
-  const cardTransactions = filteredTransactions.filter(t => t.paymentMethod === 'card').length;
+  // Calculate summary statistics
+  const totalValue = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  const cashValue = transactions
+    .filter(tx => tx.paymentMethod === 'cash')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const upiValue = transactions
+    .filter(tx => tx.paymentMethod === 'upi')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const cardValue = transactions
+    .filter(tx => tx.paymentMethod === 'card')
+    .reduce((sum, tx) => sum + tx.amount, 0);
   
   return (
     <div className="p-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Transactions</h1>
         <div className="mt-4 md:mt-0 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-muted-foreground" />
@@ -61,67 +85,74 @@ const Transactions = () => {
         </div>
       </div>
       
-      {/* Transaction Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid gap-6 mb-6 md:grid-cols-4">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Transactions</p>
-                <h3 className="text-2xl font-bold mt-1">{totalTransactions}</h3>
-              </div>
-              <ArrowDownUp className="h-5 w-5 text-muted-foreground" />
+          <CardHeader className="py-2 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Sales</CardTitle>
+          </CardHeader>
+          <CardContent className="py-2 px-4">
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              }).format(totalValue)}
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Amount</p>
-                <h3 className="text-2xl font-bold mt-1">₹{totalAmount.toLocaleString('en-IN', {maximumFractionDigits: 2})}</h3>
-              </div>
-              <PieChart className="h-5 w-5 text-muted-foreground" />
+          <CardHeader className="py-2 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Cash Payments</CardTitle>
+          </CardHeader>
+          <CardContent className="py-2 px-4">
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              }).format(cashValue)}
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Payment Methods</p>
-                <div className="mt-2 space-y-1">
-                  <div className="text-sm">Cash: {cashTransactions}</div>
-                  <div className="text-sm">UPI: {upiTransactions}</div>
-                  <div className="text-sm">Card: {cardTransactions}</div>
-                </div>
-              </div>
+          <CardHeader className="py-2 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">UPI Payments</CardTitle>
+          </CardHeader>
+          <CardContent className="py-2 px-4">
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              }).format(upiValue)}
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-muted-foreground">Average Transaction</p>
-                <h3 className="text-2xl font-bold mt-1">
-                  ₹{(totalAmount / (totalTransactions || 1)).toLocaleString('en-IN', {maximumFractionDigits: 2})}
-                </h3>
-              </div>
+          <CardHeader className="py-2 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Card Payments</CardTitle>
+          </CardHeader>
+          <CardContent className="py-2 px-4">
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              }).format(cardValue)}
             </div>
           </CardContent>
         </Card>
       </div>
       
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <CardTitle>Transaction History</CardTitle>
-              <CardDescription>View all payment transactions</CardDescription>
+              <CardDescription>Complete record of sales transactions</CardDescription>
             </div>
             <div className="flex flex-col md:flex-row gap-4 mt-4 md:mt-0">
               <div className="relative">
@@ -133,7 +164,7 @@ const Transactions = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select value={methodFilter} onValueChange={setMethodFilter}>
                 <SelectTrigger className="w-full md:w-[180px]">
                   <SelectValue placeholder="Payment Method" />
                 </SelectTrigger>
@@ -151,43 +182,32 @@ const Transactions = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Transaction Date</TableHead>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Payment Method</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Payment Method</TableHead>
-                <TableHead className="text-right">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((transaction) => (
+              {sortedTransactions.length > 0 ? (
+                sortedTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
-                    <TableCell className="font-medium">{transaction.invoiceNumber}</TableCell>
+                    <TableCell>{transaction.createdAt.toLocaleString()}</TableCell>
+                    <TableCell>{transaction.invoiceNumber}</TableCell>
                     <TableCell>{transaction.customer}</TableCell>
-                    <TableCell>{transaction.date.toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">₹{transaction.amount.toLocaleString('en-IN', {maximumFractionDigits: 2})}</TableCell>
-                    <TableCell className="text-right capitalize">{transaction.paymentMethod}</TableCell>
+                    <TableCell className="capitalize">{transaction.paymentMethod}</TableCell>
                     <TableCell className="text-right">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        transaction.status === 'paid' ? 'bg-green-100 text-green-800' : 
-                        transaction.status === 'partial' ? 'bg-amber-100 text-amber-800' : 
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleViewTransaction(transaction.id)}>
-                        View
-                      </Button>
+                      {new Intl.NumberFormat('en-IN', {
+                        style: 'currency',
+                        currency: 'INR',
+                      }).format(transaction.amount)}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-6">
+                  <TableCell colSpan={5} className="text-center py-6">
                     <p className="text-muted-foreground">No transactions found</p>
                   </TableCell>
                 </TableRow>

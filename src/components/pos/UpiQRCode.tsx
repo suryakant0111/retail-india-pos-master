@@ -36,8 +36,12 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
       const storedSettings = localStorage.getItem('paymentSettings');
       if (storedSettings) {
         const settings = JSON.parse(storedSettings) as PaymentSettings;
-        setUpiId(settings.upiId);
-        setAccountName(settings.accountName);
+        if (settings.upiId) {
+          setUpiId(settings.upiId);
+        }
+        if (settings.accountName) {
+          setAccountName(settings.accountName);
+        }
       }
     } catch (error) {
       console.error('Error loading payment settings:', error);

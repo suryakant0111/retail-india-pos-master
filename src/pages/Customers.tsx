@@ -1,87 +1,135 @@
 
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
-import { useForm } from 'react-hook-form';
+import { Search, UserPlus, Phone, Mail, MapPin, Edit, UserRound } from 'lucide-react';
 import { mockCustomers } from '@/data/mockData';
-import { PlusCircle, Search, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Customer } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 
 const Customers = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [newCustomerDialog, setNewCustomerDialog] = useState(false);
+  const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+  });
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Load customers from localStorage
+    try {
+      const storedCustomers = localStorage.getItem('customers');
+      if (storedCustomers) {
+        const parsedCustomers = JSON.parse(storedCustomers);
+        
+        // Convert string dates back to Date objects
+        const processedCustomers = parsedCustomers.map((customer: any) => ({
+          ...customer,
+          createdAt: new Date(customer.createdAt),
+          updatedAt: new Date(customer.updatedAt)
+        }));
+        
+        setCustomers([...mockCustomers, ...processedCustomers]);
+      } else {
+        setCustomers([...mockCustomers]);
+      }
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      setCustomers([...mockCustomers]);
+    }
+  }, []);
   
   // Filter customers based on search term
-  const filteredCustomers = mockCustomers.filter(customer => 
+  const filteredCustomers = customers.filter(customer => 
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm) ||
+    customer.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  const handleEdit = (id: string) => {
-    toast({
-      title: "Edit Customer",
-      description: `This would open a form to edit customer with ID: ${id}`,
-      variant: "default",
-    });
-  };
-  
-  const handleDelete = (id: string) => {
-    toast({
-      title: "Delete Customer",
-      description: `This action would remove this customer from the database.`,
-      variant: "destructive",
-    });
-  };
-
-  const handleAddCustomerSubmit = (data: any) => {
-    toast({
-      title: "Customer Added",
-      description: `The customer ${data.name} has been added successfully.`,
-      variant: "success",
-    });
-    setShowAddCustomerDialog(false);
-  };
-
-  // Form for adding a new customer
-  const customerForm = useForm({
-    defaultValues: {
+  const handleAddNewCustomer = () => {
+    if (!newCustomer.name || !newCustomer.phone) {
+      toast({
+        title: "Missing Information",
+        description: "Name and phone number are required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const now = new Date();
+    const newCustomerId = `CUST${Date.now().toString().slice(-6)}`;
+    
+    const customerToAdd: Customer = {
+      id: newCustomerId,
+      name: newCustomer.name,
+      phone: newCustomer.phone,
+      email: newCustomer.email || undefined,
+      address: newCustomer.address || undefined,
+      loyaltyPoints: 0,
+      totalPurchases: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    // Update state with new customer
+    const updatedCustomers = [...customers, customerToAdd];
+    setCustomers(updatedCustomers);
+    
+    // Get only the user-added customers for localStorage
+    const currentStoredCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
+    localStorage.setItem('customers', JSON.stringify([...currentStoredCustomers, customerToAdd]));
+    
+    setNewCustomerDialog(false);
+    setNewCustomer({
       name: '',
       phone: '',
       email: '',
-      address: ''
-    }
-  });
+      address: '',
+    });
+    
+    toast({
+      title: "Customer Added",
+      description: `${customerToAdd.name} has been added to your customer database.`,
+      variant: "success",
+    });
+  };
   
   return (
     <div className="p-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Customers</h1>
-        <Button className="mt-4 md:mt-0" onClick={() => setShowAddCustomerDialog(true)}>
-          <UserPlus className="mr-2 h-4 w-4" /> Add Customer
-        </Button>
+        <div className="mt-4 md:mt-0">
+          <Button onClick={() => setNewCustomerDialog(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add New Customer
+          </Button>
+        </div>
       </div>
       
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <CardTitle>Customer Database</CardTitle>
-              <CardDescription>View and manage your customer records</CardDescription>
+              <CardDescription>Manage and view your customer information</CardDescription>
             </div>
-            <div className="relative mt-4 md:mt-0">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search customers..."
-                className="pl-8 w-full md:w-auto"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            <div className="mt-4 md:mt-0">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search customers..."
+                  className="pl-8 w-full md:w-[300px]"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -90,11 +138,10 @@ const Customers = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Address</TableHead>
-                <TableHead className="text-right">Loyalty Points</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Contact Information</TableHead>
+                <TableHead>Total Purchases</TableHead>
+                <TableHead>Loyalty Points</TableHead>
+                <TableHead>Added On</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -102,26 +149,44 @@ const Customers = () => {
                 filteredCustomers.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.phone}</TableCell>
-                    <TableCell>{customer.email || '-'}</TableCell>
-                    <TableCell>{customer.address || '-'}</TableCell>
-                    <TableCell className="text-right">{customer.loyaltyPoints || 0}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(customer.id)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(customer.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center text-sm">
+                          <Phone className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                          {customer.phone}
+                        </div>
+                        {customer.email && (
+                          <div className="flex items-center text-sm">
+                            <Mail className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                            {customer.email}
+                          </div>
+                        )}
+                        {customer.address && (
+                          <div className="flex items-center text-sm">
+                            <MapPin className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                            {customer.address}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {new Intl.NumberFormat('en-IN', {
+                        style: 'currency',
+                        currency: 'INR',
+                        maximumFractionDigits: 0,
+                      }).format(customer.totalPurchases || 0)}
+                    </TableCell>
+                    <TableCell>{customer.loyaltyPoints || 0}</TableCell>
+                    <TableCell>{customer.createdAt.toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-6">
-                    <p className="text-muted-foreground">No customers found</p>
+                  <TableCell colSpan={5} className="text-center py-6">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground">
+                      <UserRound className="h-10 w-10 mb-2" />
+                      <p>No customers found</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -130,71 +195,67 @@ const Customers = () => {
         </CardContent>
       </Card>
       
-      {/* Add Customer Dialog */}
-      <Dialog open={showAddCustomerDialog} onOpenChange={setShowAddCustomerDialog}>
+      <Dialog open={newCustomerDialog} onOpenChange={setNewCustomerDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add New Customer</DialogTitle>
           </DialogHeader>
-          <Form {...customerForm}>
-            <form onSubmit={customerForm.handleSubmit(handleAddCustomerSubmit)} className="space-y-4">
-              <FormField
-                control={customerForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Customer Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter customer name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="name" className="text-sm font-medium">
+                Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="name"
+                value={newCustomer.name}
+                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                placeholder="Customer name"
               />
-              <FormField
-                control={customerForm.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter phone number" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="phone" className="text-sm font-medium">
+                Phone <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="phone"
+                value={newCustomer.phone}
+                onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                placeholder="Phone number"
               />
-              <FormField
-                control={customerForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email (Optional)</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="Enter email address" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                value={newCustomer.email || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                placeholder="Email address (optional)"
               />
-              <FormField
-                control={customerForm.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter address" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="address" className="text-sm font-medium">
+                Address
+              </label>
+              <Input
+                id="address"
+                value={newCustomer.address || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                placeholder="Address (optional)"
               />
-              <DialogFooter>
-                <Button type="submit">Add Customer</Button>
-              </DialogFooter>
-            </form>
-          </Form>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewCustomerDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddNewCustomer}>Add Customer</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
