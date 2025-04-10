@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,20 +5,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { mockProducts, mockCustomers, mockInvoices } from '@/data/mockData';
-import { Search, Plus, BarChart4, Trash2, Edit, Package, Users, FileText } from 'lucide-react';
+import { Search, Plus, BarChart4, Trash2, Edit, Package, Users, FileText, Barcode } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
+import { Product } from '@/types';
 
 const AdminPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false);
+  const [products, setProducts] = useState(mockProducts);
+  const [customers, setCustomers] = useState(mockCustomers);
   const { toast } = useToast();
   
   // Filter products based on search term
-  const filteredProducts = mockProducts.filter(product => 
+  const filteredProducts = products.filter(product => 
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -59,27 +61,61 @@ const AdminPage: React.FC = () => {
   };
   
   const handleDelete = (id: string, type: string) => {
-    toast({
-      title: `Delete ${type}`,
-      description: `This action would remove this ${type.toLowerCase()} from the database.`,
-      variant: "destructive",
-    });
+    if (type === 'Product') {
+      setProducts(products.filter(product => product.id !== id));
+      toast({
+        title: `Delete ${type}`,
+        description: `Product has been removed from the database.`,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: `Delete ${type}`,
+        description: `This action would remove this ${type.toLowerCase()} from the database.`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAddProductSubmit = (data: any) => {
+    const newProduct: Product = {
+      id: `PRD${Date.now().toString().slice(-6)}`,
+      name: data.name,
+      description: data.description || `Description for ${data.name}`,
+      category: data.category,
+      price: parseFloat(data.price),
+      tax: 18, // Default tax percentage
+      stock: parseInt(data.stock),
+      barcode: data.barcode || "",
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    setProducts([...products, newProduct]);
+    
+    // Update localStorage to persist the new product
+    try {
+      const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
+      localStorage.setItem('products', JSON.stringify([...existingProducts, newProduct]));
+    } catch (error) {
+      console.error('Error saving product to localStorage:', error);
+    }
+    
     toast({
       title: "Product Added",
       description: `The product ${data.name} has been added successfully.`,
-      variant: "success",
+      variant: "default",
     });
     setShowAddProductDialog(false);
+    productForm.reset();
   };
 
   const handleAddCustomerSubmit = (data: any) => {
     toast({
       title: "Customer Added",
       description: `The customer ${data.name} has been added successfully.`,
-      variant: "success",
+      variant: "default",
     });
     setShowAddCustomerDialog(false);
   };
@@ -90,7 +126,9 @@ const AdminPage: React.FC = () => {
       name: '',
       category: '',
       price: '',
-      stock: ''
+      stock: '',
+      description: '',
+      barcode: ''
     }
   });
 
@@ -161,6 +199,7 @@ const AdminPage: React.FC = () => {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
+                    <TableHead>Barcode</TableHead>
                     <TableHead className="text-right">Price</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -171,6 +210,7 @@ const AdminPage: React.FC = () => {
                     <TableRow key={product.id}>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.category}</TableCell>
+                      <TableCell>{product.barcode || '-'}</TableCell>
                       <TableCell className="text-right">₹{product.price.toLocaleString('en-IN')}</TableCell>
                       <TableCell className="text-right">{product.stock}</TableCell>
                       <TableCell className="text-right">
@@ -317,6 +357,9 @@ const AdminPage: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add New Product</DialogTitle>
+            <DialogDescription>
+              Fill out the form below to add a new product to inventory.
+            </DialogDescription>
           </DialogHeader>
           <Form {...productForm}>
             <form onSubmit={productForm.handleSubmit(handleAddProductSubmit)} className="space-y-4">
@@ -341,6 +384,41 @@ const AdminPage: React.FC = () => {
                     <FormLabel>Category</FormLabel>
                     <FormControl>
                       <Input placeholder="Enter category" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={productForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter product description" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={productForm.control}
+                name="barcode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Barcode</FormLabel>
+                    <FormControl>
+                      <div className="flex gap-2">
+                        <Input placeholder="Enter product barcode" {...field} />
+                        <Button type="button" variant="outline" size="icon" title="Generate Random Barcode" 
+                          onClick={() => {
+                            const randomBarcode = Math.floor(10000000000000 + Math.random() * 90000000000000).toString();
+                            field.onChange(randomBarcode);
+                          }}>
+                          <Barcode className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

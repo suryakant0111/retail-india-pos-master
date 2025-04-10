@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Search, Barcode } from 'lucide-react';
+import { Search, Barcode, Keyboard } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
 import { useCart } from '@/contexts/CartContext';
@@ -27,6 +27,7 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
 }) => {
   const [barcodeScannerMode, setBarcodeScannerMode] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState('');
+  const [manualEntryMode, setManualEntryMode] = useState(false);
   const { addItem } = useCart();
   const { toast } = useToast();
   
@@ -52,7 +53,18 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
   const processBarcodeInput = () => {
     if (!barcodeValue.trim()) return;
     
-    const product = products.find(p => p.barcode === barcodeValue.trim());
+    // First try to find the product in the regular products array
+    let product = products.find(p => p.barcode === barcodeValue.trim());
+    
+    // If not found, try to find in localStorage (for newly added products)
+    if (!product) {
+      try {
+        const storedProducts = JSON.parse(localStorage.getItem('products') || '[]');
+        product = storedProducts.find((p: Product) => p.barcode === barcodeValue.trim());
+      } catch (error) {
+        console.error('Error loading products from localStorage:', error);
+      }
+    }
     
     if (product) {
       addItem(product, 1);
@@ -76,6 +88,16 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
   
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     onSearch(e.target.value);
+  };
+  
+  const toggleBarcodeMode = () => {
+    setBarcodeScannerMode(!barcodeScannerMode);
+    setManualEntryMode(false);
+  };
+  
+  const toggleManualEntryMode = () => {
+    setManualEntryMode(!manualEntryMode);
+    setBarcodeScannerMode(false);
   };
   
   return (
@@ -106,30 +128,67 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
         <Button 
           variant={barcodeScannerMode ? "default" : "outline"} 
           size="icon" 
-          onClick={() => setBarcodeScannerMode(!barcodeScannerMode)}
+          onClick={toggleBarcodeMode}
           title="Toggle barcode scanner"
         >
           <Barcode className="h-4 w-4" />
         </Button>
+        
+        <Button 
+          variant={manualEntryMode ? "default" : "outline"} 
+          size="icon" 
+          onClick={toggleManualEntryMode}
+          title="Toggle manual barcode entry"
+        >
+          <Keyboard className="h-4 w-4" />
+        </Button>
       </div>
       
       {barcodeScannerMode && (
-        <div className="mb-4 flex gap-2">
-          <div className="relative flex-1">
-            <Barcode className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={barcodeInputRef}
-              placeholder="Scan barcode..."
-              className="pl-9"
-              value={barcodeValue}
-              onChange={handleBarcodeInput}
-              onKeyDown={handleBarcodeKeyDown}
-              autoFocus
-            />
+        <div className="mb-4">
+          <div className="mb-2 text-sm text-muted-foreground">
+            Position barcode scanner at the barcode and scan
           </div>
-          <Button onClick={processBarcodeInput} disabled={!barcodeValue.trim()}>
-            Add Item
-          </Button>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Barcode className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={barcodeInputRef}
+                placeholder="Barcode will appear here..."
+                className="pl-9"
+                value={barcodeValue}
+                onChange={handleBarcodeInput}
+                onKeyDown={handleBarcodeKeyDown}
+                autoFocus
+              />
+            </div>
+            <Button onClick={processBarcodeInput} disabled={!barcodeValue.trim()}>
+              Add Item
+            </Button>
+          </div>
+        </div>
+      )}
+      
+      {manualEntryMode && (
+        <div className="mb-4">
+          <div className="mb-2 text-sm text-muted-foreground">
+            Enter barcode manually below
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Keyboard className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Type barcode number..."
+                className="pl-9"
+                value={barcodeValue}
+                onChange={handleBarcodeInput}
+                onKeyDown={handleBarcodeKeyDown}
+              />
+            </div>
+            <Button onClick={processBarcodeInput} disabled={!barcodeValue.trim()}>
+              Add Item
+            </Button>
+          </div>
         </div>
       )}
     </>

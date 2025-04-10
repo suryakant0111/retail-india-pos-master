@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ProductSearch } from '@/components/pos/ProductSearch';
 import { ProductGrid } from '@/components/pos/ProductGrid';
 import { CartSection } from '@/components/pos/CartSection';
@@ -8,7 +8,7 @@ import { ReceiptDialog } from '@/components/pos/ReceiptDialog';
 import { useCart } from '@/contexts/CartContext';
 import { mockProducts, mockCustomers } from '@/data/mockData';
 import { useToast } from '@/components/ui/use-toast';
-import { Wallet, IndianRupee, CreditCard } from 'lucide-react';
+import { Product } from '@/types';
 
 const POS = () => {
   const { 
@@ -31,10 +31,27 @@ const POS = () => {
   const [showReceiptDialog, setShowReceiptDialog] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
+  const [products, setProducts] = useState<Product[]>(mockProducts);
   
-  const categories = ['all', ...Array.from(new Set(mockProducts.map(p => p.category)))];
+  useEffect(() => {
+    // Try to load products from localStorage
+    try {
+      const storedProducts = localStorage.getItem('products');
+      if (storedProducts) {
+        const parsedProducts = JSON.parse(storedProducts);
+        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+          setProducts([...mockProducts, ...parsedProducts]);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading products from localStorage:', error);
+    }
+  }, []);
   
-  const filteredProducts = mockProducts.filter(product => {
+  // Get unique categories from products
+  const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
+  
+  const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (product.barcode && product.barcode.includes(searchTerm));
     const matchesCategory = category === 'all' || product.category === category;
@@ -97,7 +114,7 @@ const POS = () => {
       <div className="lg:w-2/3 p-4 overflow-auto">
         <div className="mb-4">
           <ProductSearch 
-            products={mockProducts}
+            products={products}
             onSearch={setSearchTerm}
             searchTerm={searchTerm}
             category={category}
