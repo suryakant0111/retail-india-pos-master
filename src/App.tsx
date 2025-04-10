@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/products" element={<Products />} />
+                <Route path="/admin" element={<Admin />} />
                 
                 {/* Add other protected routes here */}
                 <Route path="/customers" element={<div className="p-6"><h1 className="text-3xl font-bold">Customers (Coming Soon)</h1></div>} />

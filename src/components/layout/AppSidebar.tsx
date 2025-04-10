@@ -11,6 +11,7 @@ import {
   LogOut,
   Clock,
   Tag,
+  Layers
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -64,6 +65,7 @@ export const AppSidebar = () => {
           <SidebarItem icon={Users} href="/customers" label="Customers" active={isActive('/customers')} />
           <SidebarItem icon={FileText} href="/invoices" label="Invoices" active={isActive('/invoices')} />
           <SidebarItem icon={Clock} href="/transactions" label="Transactions" active={isActive('/transactions')} />
+          <SidebarItem icon={Layers} href="/admin" label="Admin Panel" active={isActive('/admin')} />
           
           {isAdmin && (
             <>
