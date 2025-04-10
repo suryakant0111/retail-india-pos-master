@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, UserRound, UserPlus } from 'lucide-react';
+import { X, UserRound, UserPlus, Wallet, IndianRupee, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
