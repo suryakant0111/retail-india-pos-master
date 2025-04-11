@@ -48,8 +48,14 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
     }
   }, []);
   
+  // Safety check for UPI parameters to prevent crashes
+  const safeUpiId = upiId || '7259538046@ybl';
+  const safeAccountName = accountName || 'Retail POS Account';
+  const safeAmount = amount || 0;
+  const safeReference = reference || 'UNKNOWN';
+  
   // UPI deep link with amount and reference
-  const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(accountName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Payment Ref: ${reference}`)}`;
+  const upiLink = `upi://pay?pa=${safeUpiId}&pn=${encodeURIComponent(safeAccountName)}&am=${safeAmount}&cu=INR&tn=${encodeURIComponent(`Payment Ref: ${safeReference}`)}`;
   
   const handleCheckPayment = () => {
     setChecking(true);
@@ -81,16 +87,16 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
             {new Intl.NumberFormat('en-IN', {
               style: 'currency',
               currency: 'INR',
-            }).format(amount)}
+            }).format(safeAmount)}
           </div>
           <p className="text-sm text-muted-foreground mb-2">
             Scan with any UPI app to pay
           </p>
           <div className="text-xs text-muted-foreground">
-            UPI ID: {upiId}
+            UPI ID: {safeUpiId}
           </div>
           <div className="text-xs text-muted-foreground">
-            Reference: {reference}
+            Reference: {safeReference}
           </div>
         </div>
       </CardContent>

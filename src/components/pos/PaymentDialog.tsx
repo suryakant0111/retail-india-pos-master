@@ -1,10 +1,18 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { UpiQRCode } from '@/components/pos/UpiQRCode';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+
+interface PaymentSettings {
+  upiId: string;
+  accountName: string;
+  enableUpi: boolean;
+  enableCash: boolean;
+  enableCard: boolean;
+}
 
 interface PaymentDialogProps {
   open: boolean;
@@ -25,6 +33,23 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   onPaymentConfirmed,
   generateReference
 }) => {
+  const [upiId, setUpiId] = useState('7259538046@ybl');
+  
+  useEffect(() => {
+    // Load payment settings from localStorage
+    try {
+      const storedSettings = localStorage.getItem('paymentSettings');
+      if (storedSettings) {
+        const settings = JSON.parse(storedSettings) as PaymentSettings;
+        if (settings.upiId) {
+          setUpiId(settings.upiId);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading payment settings:', error);
+    }
+  }, []);
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -49,7 +74,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           <UpiQRCode 
             amount={total} 
             reference={generateReference()} 
-            upiId="7259538046@ybl"
+            upiId={upiId}
             onPaymentConfirmed={onPaymentConfirmed} 
           />
         ) : (

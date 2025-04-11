@@ -1,11 +1,19 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download } from 'lucide-react';
 import { CartItem, Customer } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+interface BusinessSettings {
+  businessName: string;
+  address: string;
+  phone: string;
+  email: string;
+  gstNumber: string;
+}
 
 interface ReceiptDialogProps {
   open: boolean;
@@ -40,17 +48,39 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
   onFinalize,
   isPrintingReceipt
 }) => {
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
+    businessName: 'RETAIL POS',
+    address: '123 Main Street, City',
+    phone: '123-456-7890',
+    email: 'contact@example.com',
+    gstNumber: 'GST1234567890'
+  });
+  
+  useEffect(() => {
+    // Load business settings from localStorage whenever the dialog opens
+    if (open) {
+      try {
+        const storedSettings = localStorage.getItem('businessSettings');
+        if (storedSettings) {
+          const settings = JSON.parse(storedSettings) as BusinessSettings;
+          setBusinessSettings(settings);
+        }
+      } catch (error) {
+        console.error('Error loading business settings:', error);
+      }
+    }
+  }, [open]);
   
   const generatePDF = () => {
     const doc = new jsPDF();
     
-    // Add title
+    // Add title with business name from settings
     doc.setFontSize(20);
-    doc.text('RETAIL POS', 105, 20, { align: 'center' });
+    doc.text(businessSettings.businessName, 105, 20, { align: 'center' });
     
     doc.setFontSize(10);
-    doc.text('123 Main Street, City', 105, 30, { align: 'center' });
-    doc.text('Phone: 123-456-7890', 105, 35, { align: 'center' });
+    doc.text(businessSettings.address, 105, 30, { align: 'center' });
+    doc.text(`Phone: ${businessSettings.phone}`, 105, 35, { align: 'center' });
     
     // Add invoice details
     doc.setFontSize(12);
@@ -125,9 +155,9 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
         
         <div className="border-t border-b py-4 my-4">
           <div className="text-center mb-4">
-            <h3 className="font-bold text-lg">RETAIL POS</h3>
-            <p className="text-sm text-muted-foreground">123 Main Street, City</p>
-            <p className="text-sm text-muted-foreground">Phone: 123-456-7890</p>
+            <h3 className="font-bold text-lg">{businessSettings.businessName}</h3>
+            <p className="text-sm text-muted-foreground">{businessSettings.address}</p>
+            <p className="text-sm text-muted-foreground">Phone: {businessSettings.phone}</p>
             {customer && <p className="text-sm mt-2">Customer: {customer.name}</p>}
           </div>
           
