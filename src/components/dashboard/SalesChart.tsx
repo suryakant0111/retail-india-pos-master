@@ -24,6 +24,26 @@ const formatCurrency = (value: number) => {
 };
 
 export const SalesChart: React.FC<SalesChartProps> = ({ data, title, description }) => {
+  // Safety check - ensure data is valid and has items
+  if (!data || data.length === 0) {
+    return (
+      <Card className="col-span-full">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+            No data available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Check if any data item has a target property
+  const hasTargetData = data.some(item => item.target !== undefined);
+
   return (
     <Card className="col-span-full">
       <CardHeader>
@@ -40,7 +60,7 @@ export const SalesChart: React.FC<SalesChartProps> = ({ data, title, description
               <Tooltip formatter={(value) => formatCurrency(Number(value))} />
               <Legend />
               <Bar dataKey="sales" name="Sales" fill="#1E40AF" radius={[4, 4, 0, 0]} />
-              {data[0].target !== undefined && (
+              {hasTargetData && (
                 <Bar dataKey="target" name="Target" fill="#10B981" radius={[4, 4, 0, 0]} />
               )}
             </BarChart>
