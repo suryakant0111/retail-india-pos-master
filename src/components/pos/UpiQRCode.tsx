@@ -21,14 +21,15 @@ interface PaymentSettings {
 }
 
 export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
-  amount,
-  reference,
+  amount = 0, // Default value
+  reference = 'UNKNOWN', // Default value
   upiId: propUpiId,
-  onPaymentConfirmed
+  onPaymentConfirmed = () => {} // Default function
 }) => {
   const [checking, setChecking] = useState(false);
   const [upiId, setUpiId] = useState(propUpiId || '7259538046@ybl');
   const [accountName, setAccountName] = useState('Retail POS Account');
+  const [errorState, setErrorState] = useState(false);
   
   useEffect(() => {
     // Try to load payment settings from localStorage
@@ -45,6 +46,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
       }
     } catch (error) {
       console.error('Error loading payment settings:', error);
+      setErrorState(true);
     }
   }, []);
   
@@ -54,17 +56,76 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   const safeAmount = amount || 0;
   const safeReference = reference || 'UNKNOWN';
   
-  // UPI deep link with amount and reference
-  const upiLink = `upi://pay?pa=${safeUpiId}&pn=${encodeURIComponent(safeAccountName)}&am=${safeAmount}&cu=INR&tn=${encodeURIComponent(`Payment Ref: ${safeReference}`)}`;
+  // Create UPI link with error handling
+  const createUpiLink = () => {
+    try {
+      return `upi://pay?pa=${encodeURIComponent(safeUpiId)}&pn=${encodeURIComponent(safeAccountName)}&am=${safeAmount}&cu=INR&tn=${encodeURIComponent(`Payment Ref: ${safeReference}`)}`;
+    } catch (error) {
+      console.error('Error creating UPI link:', error);
+      return `upi://pay?pa=${safeUpiId}`;
+    }
+  };
+  
+  const upiLink = createUpiLink();
   
   const handleCheckPayment = () => {
+    if (checking) return; // Prevent multiple clicks
+    
     setChecking(true);
-    // Simulate payment verification
-    setTimeout(() => {
+    
+    // Simulate payment verification with error handling
+    try {
+      setTimeout(() => {
+        setChecking(false);
+        if (typeof onPaymentConfirmed === 'function') {
+          onPaymentConfirmed();
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('Error handling payment check:', error);
       setChecking(false);
-      onPaymentConfirmed();
-    }, 2000);
+    }
   };
+  
+  // Error state fallback UI
+  if (errorState) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-center">UPI Payment</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-4">
+          <div className="text-center text-red-500">
+            There was an error loading UPI payment information.
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold mb-1">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+              }).format(safeAmount)}
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <Button 
+            onClick={handleCheckPayment}
+            disabled={checking}
+            className="w-full"
+          >
+            {checking ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verifying Payment...
+              </>
+            ) : (
+              "I've Completed the Payment"
+            )}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
   
   return (
     <Card>
@@ -73,14 +134,20 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-4">
         <div className="bg-white p-4 rounded-lg shadow-sm">
-          <QRCodeSVG
-            value={upiLink}
-            size={200}
-            bgColor={"#ffffff"}
-            fgColor={"#000000"}
-            level={"L"}
-            includeMargin={false}
-          />
+          {upiLink ? (
+            <QRCodeSVG
+              value={upiLink}
+              size={200}
+              bgColor={"#ffffff"}
+              fgColor={"#000000"}
+              level={"L"}
+              includeMargin={false}
+            />
+          ) : (
+            <div className="h-[200px] w-[200px] flex items-center justify-center bg-gray-100">
+              QR Code not available
+            </div>
+          )}
         </div>
         <div className="text-center">
           <div className="text-2xl font-bold mb-1">

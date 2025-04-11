@@ -27,13 +27,27 @@ interface PaymentDialogProps {
 export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   open,
   onOpenChange,
-  paymentMethod,
-  total,
-  paymentSuccess,
-  onPaymentConfirmed,
-  generateReference
+  paymentMethod = 'cash', // Provide default value
+  total = 0, // Provide default value
+  paymentSuccess = false, // Provide default value
+  onPaymentConfirmed = () => {}, // Provide default function
+  generateReference = () => 'REF' + Date.now().toString() // Provide default function
 }) => {
   const [upiId, setUpiId] = useState('7259538046@ybl');
+  const [reference, setReference] = useState('');
+  
+  // Generate a reference when the dialog opens
+  useEffect(() => {
+    if (open && typeof generateReference === 'function') {
+      try {
+        const ref = generateReference();
+        setReference(ref || 'REF' + Date.now().toString());
+      } catch (error) {
+        console.error('Error generating reference:', error);
+        setReference('REF' + Date.now().toString());
+      }
+    }
+  }, [open, generateReference]);
   
   useEffect(() => {
     // Load payment settings from localStorage
@@ -50,8 +64,30 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, []);
   
+  // Safe handler for payment confirmation
+  const handlePaymentConfirmed = () => {
+    if (typeof onPaymentConfirmed === 'function') {
+      try {
+        onPaymentConfirmed();
+      } catch (error) {
+        console.error('Error confirming payment:', error);
+      }
+    }
+  };
+  
+  // Safe handler for dialog close
+  const handleOpenChange = (newOpen: boolean) => {
+    if (typeof onOpenChange === 'function') {
+      try {
+        onOpenChange(newOpen);
+      } catch (error) {
+        console.error('Error changing dialog state:', error);
+      }
+    }
+  };
+  
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
@@ -73,9 +109,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         {paymentMethod === 'upi' ? (
           <UpiQRCode 
             amount={total} 
-            reference={generateReference()} 
+            reference={reference || generateReference()} 
             upiId={upiId}
-            onPaymentConfirmed={onPaymentConfirmed} 
+            onPaymentConfirmed={handlePaymentConfirmed} 
           />
         ) : (
           <Card>
@@ -98,11 +134,11 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <div className="flex gap-2">
-                <Button onClick={onPaymentConfirmed}>
+                <Button onClick={handlePaymentConfirmed}>
                   Mark as Paid
                 </Button>
               </div>

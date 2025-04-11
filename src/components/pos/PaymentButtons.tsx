@@ -12,11 +12,30 @@ export const PaymentButtons: React.FC<PaymentButtonsProps> = ({
   disabled,
   onPaymentMethodSelect
 }) => {
+  // Create safer handler functions that check for onPaymentMethodSelect
+  const handleCashPayment = () => {
+    if (typeof onPaymentMethodSelect === 'function') {
+      onPaymentMethodSelect('cash');
+    }
+  };
+  
+  const handleUpiPayment = () => {
+    if (typeof onPaymentMethodSelect === 'function') {
+      onPaymentMethodSelect('upi');
+    }
+  };
+  
+  const handleCardPayment = () => {
+    if (typeof onPaymentMethodSelect === 'function') {
+      onPaymentMethodSelect('card');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <Button 
         disabled={disabled} 
-        onClick={() => onPaymentMethodSelect('cash')}
+        onClick={handleCashPayment}
         className="w-full"
       >
         <Wallet className="mr-2 h-4 w-4" /> Pay with Cash
@@ -24,7 +43,7 @@ export const PaymentButtons: React.FC<PaymentButtonsProps> = ({
       
       <Button 
         disabled={disabled} 
-        onClick={() => onPaymentMethodSelect('upi')}
+        onClick={handleUpiPayment}
         variant="outline"
         className="w-full"
       >
@@ -33,7 +52,7 @@ export const PaymentButtons: React.FC<PaymentButtonsProps> = ({
       
       <Button 
         disabled={disabled} 
-        onClick={() => onPaymentMethodSelect('card')}
+        onClick={handleCardPayment}
         variant="outline"
         className="w-full"
       >
