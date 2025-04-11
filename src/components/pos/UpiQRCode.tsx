@@ -30,6 +30,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   const [upiId, setUpiId] = useState(propUpiId || '7259538046@ybl');
   const [accountName, setAccountName] = useState('Retail POS Account');
   const [errorState, setErrorState] = useState(false);
+  const [stableReference] = useState(reference); // Create a stable reference that won't change with re-renders
   
   useEffect(() => {
     // Try to load payment settings from localStorage
@@ -54,7 +55,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   const safeUpiId = upiId || '7259538046@ybl';
   const safeAccountName = accountName || 'Retail POS Account';
   const safeAmount = amount || 0;
-  const safeReference = reference || 'UNKNOWN';
+  const safeReference = stableReference || 'UNKNOWN'; // Use the stable reference
   
   // Create UPI link with error handling
   const createUpiLink = () => {
@@ -66,7 +67,8 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
     }
   };
   
-  const upiLink = createUpiLink();
+  // Create UPI link once and memoize it to prevent continuous regeneration
+  const upiLink = React.useMemo(() => createUpiLink(), [safeUpiId, safeAccountName, safeAmount, safeReference]);
   
   const handleCheckPayment = () => {
     if (checking) return; // Prevent multiple clicks

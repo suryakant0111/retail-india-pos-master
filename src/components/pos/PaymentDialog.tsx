@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -36,9 +35,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [upiId, setUpiId] = useState('7259538046@ybl');
   const [reference, setReference] = useState('');
   
-  // Generate a reference when the dialog opens
+  // Generate a reference only when the dialog first opens, not on every render
   useEffect(() => {
-    if (open && typeof generateReference === 'function') {
+    if (open && !reference && typeof generateReference === 'function') {
       try {
         const ref = generateReference();
         setReference(ref || 'REF' + Date.now().toString());
@@ -47,7 +46,18 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         setReference('REF' + Date.now().toString());
       }
     }
-  }, [open, generateReference]);
+  }, [open, generateReference, reference]);
+  
+  // Reset reference when dialog closes
+  useEffect(() => {
+    if (!open) {
+      // Wait a bit to reset the reference to avoid flicker on close
+      const timer = setTimeout(() => {
+        setReference('');
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
   
   useEffect(() => {
     // Load payment settings from localStorage
@@ -86,6 +96,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   };
   
+  // Ensure we always have a stable reference for UPI component
+  const currentReference = reference || 'REF' + Date.now().toString();
+  
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -109,7 +122,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         {paymentMethod === 'upi' ? (
           <UpiQRCode 
             amount={total} 
-            reference={reference || generateReference()} 
+            reference={currentReference} 
             upiId={upiId}
             onPaymentConfirmed={handlePaymentConfirmed} 
           />
