@@ -14,11 +14,8 @@ import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
 import Customers from "./pages/Customers";
-import Invoices from "./pages/Invoices";
-import Transactions from "./pages/Transactions";
 import Inventory from "./pages/Inventory";
 import Settings from "./pages/Settings";
-import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,13 +39,10 @@ const App = () => (
                 <Route path="/pos" element={<POS />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/customers" element={<Customers />} />
-                <Route path="/invoices" element={<Invoices />} />
-                <Route path="/transactions" element={<Transactions />} />
               </Route>
               
               {/* Admin routes */}
               <Route element={<AuthGuard requireAdmin={true} />}>
-                <Route path="/admin" element={<Admin />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>

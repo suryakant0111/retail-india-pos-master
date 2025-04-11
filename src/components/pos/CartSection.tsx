@@ -71,6 +71,15 @@ export const CartSection: React.FC<CartSectionProps> = ({
       updatedAt: new Date(),
     };
     
+    // Store to localStorage immediately when adding new customer
+    try {
+      const storedCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
+      const updatedCustomers = [...storedCustomers, customerToAdd];
+      localStorage.setItem('customers', JSON.stringify(updatedCustomers));
+    } catch (error) {
+      console.error('Error saving customer to localStorage:', error);
+    }
+    
     setCustomer(customerToAdd);
     setNewCustomerDialog(false);
     setNewCustomer({
