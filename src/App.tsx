@@ -17,6 +17,9 @@ import Customers from "./pages/Customers";
 import Inventory from "./pages/Inventory";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import Transactions from "./pages/Transactions";
+import Invoices from "./pages/Invoices";
+import AdminPage from "./pages/Admin";
 
 const queryClient = new QueryClient();
 
@@ -33,18 +36,25 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               
-              {/* Protected routes */}
+              {/* Cashier routes */}
               <Route element={<AuthGuard />}>
-                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/customers" element={<Customers />} />
+              </Route>
+              
+              {/* Manager routes */}
+              <Route element={<AuthGuard requireManager={true} />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/transactions" element={<Transactions />} />
+                <Route path="/invoices" element={<Invoices />} />
               </Route>
               
               {/* Admin routes */}
               <Route element={<AuthGuard requireAdmin={true} />}>
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/admin" element={<AdminPage />} />
               </Route>
               
               {/* Catch-all route */}

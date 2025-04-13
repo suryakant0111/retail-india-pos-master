@@ -5,10 +5,13 @@ import { ProductGrid } from '@/components/pos/ProductGrid';
 import { CartSection } from '@/components/pos/CartSection';
 import { PaymentDialog } from '@/components/pos/PaymentDialog';
 import { ReceiptDialog } from '@/components/pos/ReceiptDialog';
+import { QuickProductBar } from '@/components/pos/QuickProductBar';
+import { DailySalesSummary } from '@/components/pos/DailySalesSummary';
 import { useCart } from '@/contexts/CartContext';
 import { mockProducts, mockCustomers } from '@/data/mockData';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const POS = () => {
   const { 
@@ -20,8 +23,10 @@ const POS = () => {
     clearCart,
     discountValue,
     discountType,
+    addItem
   } = useCart();
   
+  const { isManager } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('all');
@@ -58,6 +63,29 @@ const POS = () => {
     const matchesCategory = category === 'all' || product.category === category;
     return matchesSearch && matchesCategory;
   });
+  
+  const handleQuickAddProduct = (product: Product) => {
+    if (product.stock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is out of stock`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    addItem({
+      product,
+      quantity: 1,
+      price: product.price
+    });
+    
+    toast({
+      title: "Product Added",
+      description: `${product.name} has been added to cart`,
+      variant: "success",
+    });
+  };
   
   const handlePaymentConfirmed = () => {
     setPaymentSuccess(true);
@@ -213,9 +241,13 @@ const POS = () => {
   };
   
   const generateReference = () => {
-    const ref = `INV${Date.now().toString().slice(-8)}`;
-    setInvoiceReference(ref);
-    return ref;
+    // Only generate a new reference if one doesn't exist
+    if (!invoiceReference) {
+      const ref = `INV${Date.now().toString().slice(-8)}`;
+      setInvoiceReference(ref);
+      return ref;
+    }
+    return invoiceReference;
   };
   
   const openPaymentDialog = (method: 'cash' | 'upi' | 'card') => {
@@ -223,9 +255,7 @@ const POS = () => {
     setShowPaymentDialog(true);
     
     // Generate reference if not already generated
-    if (!invoiceReference) {
-      generateReference();
-    }
+    generateReference();
   };
   
   const handlePrintReceipt = () => {
@@ -249,6 +279,8 @@ const POS = () => {
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)]">
       <div className="lg:w-2/3 p-4 overflow-auto">
+        {isManager && <DailySalesSummary />}
+        
         <div className="mb-4">
           <ProductSearch 
             products={products}
@@ -257,6 +289,11 @@ const POS = () => {
             category={category}
             onCategoryChange={setCategory}
             categories={categories}
+          />
+          
+          <QuickProductBar
+            products={products}
+            onSelectProduct={handleQuickAddProduct}
           />
           
           <ProductGrid

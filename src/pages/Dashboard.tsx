@@ -4,6 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { StatCards } from '@/components/dashboard/StatCards';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import { mockSalesSummary, mockInvoices } from '@/data/mockData';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Form, FormField, FormItem, FormLabel, FormControl } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
+import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Dashboard = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -15,16 +22,28 @@ const Dashboard = () => {
   });
   const [avgOrderValue, setAvgOrderValue] = useState(0);
   const [weeklySalesData, setWeeklySalesData] = useState<any[]>([]);
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const [salesTarget, setSalesTarget] = useState<number>(0);
+  const { toast } = useToast();
+  const { isAdmin } = useAuth();
 
   useEffect(() => {
     loadData();
+    // Load sales target from localStorage
+    const savedTarget = localStorage.getItem('salesTarget');
+    if (savedTarget) {
+      setSalesTarget(parseFloat(savedTarget));
+    } else {
+      setSalesTarget(10000); // Default value
+      localStorage.setItem('salesTarget', '10000');
+    }
   }, []);
 
   const loadData = () => {
     try {
       // Load invoices from localStorage
       const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
-      const allInvoices = [...storedInvoices];
+      const allInvoices = [...mockInvoices, ...storedInvoices];
       setInvoices(allInvoices);
 
       // Calculate sales summaries
@@ -138,7 +157,7 @@ const Dashboard = () => {
       data.push({
         name: dayName,
         sales: sales || Math.random() * 10000 + 5000, // Fallback to random if no data
-        target: 10000
+        target: salesTarget / 7 // Daily target (weekly target divided by 7)
       });
     }
     
@@ -158,10 +177,45 @@ const Dashboard = () => {
     name: product.name,
     sales: product.sales,
   }));
+
+  // Form for updating sales target
+  const targetForm = useForm({
+    defaultValues: {
+      target: salesTarget.toString()
+    }
+  });
+
+  const handleTargetSubmit = (data: any) => {
+    const newTarget = parseFloat(data.target);
+    setSalesTarget(newTarget);
+    localStorage.setItem('salesTarget', newTarget.toString());
+    
+    // Regenerate sales data with new target
+    generateWeeklySalesData(invoices);
+    
+    toast({
+      title: "Sales Target Updated",
+      description: `Weekly sales target has been set to ₹${newTarget.toLocaleString('en-IN')}`,
+      variant: "success",
+    });
+    
+    setShowTargetDialog(false);
+  };
+
+  // Calculate progress towards target
+  const targetProgress = Math.min(100, (salesSummary.weeklySales / salesTarget) * 100);
   
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        
+        {isAdmin && (
+          <Button onClick={() => setShowTargetDialog(true)} className="mt-4 md:mt-0">
+            Set Sales Target
+          </Button>
+        )}
+      </div>
       
       {/* Stats Cards Section */}
       <StatCards
@@ -170,6 +224,35 @@ const Dashboard = () => {
         monthlySales={salesSummary.monthlySales}
         avgOrderValue={avgOrderValue}
       />
+      
+      {/* Target Progress */}
+      <Card className="mt-6">
+        <CardHeader className="pb-2">
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Weekly Sales Target</CardTitle>
+              <CardDescription>Progress towards weekly goal</CardDescription>
+            </div>
+            <div className="text-2xl font-bold">
+              {targetProgress.toFixed(1)}%
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <div>₹{salesSummary.weeklySales.toLocaleString('en-IN')}</div>
+              <div>₹{salesTarget.toLocaleString('en-IN')}</div>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${targetProgress >= 100 ? 'bg-green-500' : targetProgress > 70 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                style={{ width: `${targetProgress}%` }}
+              ></div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       <div className="grid gap-6 mt-6 grid-cols-1 lg:grid-cols-3">
         {/* Weekly Sales Chart */}
@@ -226,6 +309,7 @@ const Dashboard = () => {
                     <th>Customer</th>
                     <th>Amount</th>
                     <th>Status</th>
+                    <th>Payment</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,6 +335,7 @@ const Dashboard = () => {
                           {invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)}
                         </span>
                       </td>
+                      <td className="capitalize">{invoice.paymentMethod || 'Cash'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -259,6 +344,34 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Set Target Dialog */}
+      <Dialog open={showTargetDialog} onOpenChange={setShowTargetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Weekly Sales Target</DialogTitle>
+          </DialogHeader>
+          <Form {...targetForm}>
+            <form onSubmit={targetForm.handleSubmit(handleTargetSubmit)} className="space-y-4">
+              <FormField
+                control={targetForm.control}
+                name="target"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weekly Sales Target (₹)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Enter target amount" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="submit">Set Target</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

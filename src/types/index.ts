@@ -1,49 +1,9 @@
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'cashier';
-  avatar?: string;
-}
-
-export interface Product {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  price: number;
-  costPrice?: number;
-  tax: number;
-  hsnCode?: string;
-  barcode?: string;
-  stock: number;
-  minStock?: number;
-  image?: string;
-  variants?: ProductVariant[];
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ProductVariant {
-  id: string;
-  name: string;
-  attributes: {
-    [key: string]: string; // e.g., { size: 'L', color: 'Red' }
-  };
-  price: number;
-  stock: number;
-  barcode?: string;
-}
-
 export interface Customer {
   id: string;
   name: string;
   phone: string;
   email?: string;
   address?: string;
-  gstin?: string;
   loyaltyPoints?: number;
   totalPurchases?: number;
   createdAt: Date;
@@ -52,11 +12,32 @@ export interface Customer {
 
 export interface CartItem {
   product: Product;
-  variant?: ProductVariant;
   quantity: number;
   price: number;
-  taxAmount: number;
-  totalPrice: number;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  price: number;
+  tax: number;
+  taxRate?: number; // Add taxRate property
+  hsn?: string;     // Add HSN code
+  stock: number;
+  barcode?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'manager' | 'cashier';
+  avatar?: string;
 }
 
 export interface Invoice {
@@ -69,19 +50,10 @@ export interface Invoice {
   discountValue: number;
   discountType: 'percentage' | 'fixed';
   total: number;
-  paymentMethod: 'cash' | 'upi' | 'card' | 'credit';
-  paymentStatus: 'pending' | 'paid' | 'partial';
-  notes?: string;
+  paymentMethod: string;
+  paymentStatus: 'paid' | 'pending' | 'partial';
   createdBy: string;
   createdAt: Date;
-}
-
-export interface SalesSummary {
-  dailySales: number;
-  weeklySales: number;
-  monthlySales: number;
-  topProducts: {
-    name: string;
-    sales: number;
-  }[];
+  businessDetails: any;
+  paymentDetails: any;
 }

@@ -10,6 +10,7 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isManager: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   isAuthenticated: false,
   isAdmin: false,
+  isManager: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -91,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAuthenticated = !!user;
   const isAdmin = isAuthenticated && user?.role === 'admin';
+  const isManager = isAuthenticated && (user?.role === 'manager' || user?.role === 'admin');
 
   const value = {
     user,
@@ -98,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     isAuthenticated,
     isAdmin,
+    isManager,
   };
 
   if (isLoading) {

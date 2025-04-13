@@ -6,10 +6,14 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 
 interface AuthGuardProps {
   requireAdmin?: boolean;
+  requireManager?: boolean;
 }
 
-export const AuthGuard: React.FC<AuthGuardProps> = ({ requireAdmin = false }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+export const AuthGuard: React.FC<AuthGuardProps> = ({ 
+  requireAdmin = false,
+  requireManager = false
+}) => {
+  const { isAuthenticated, isAdmin, user } = useAuth();
   const location = useLocation();
 
   if (!isAuthenticated) {
@@ -17,9 +21,14 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ requireAdmin = false }) =>
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Check if admin access is required but user is not admin
   if (requireAdmin && !isAdmin) {
-    // Redirect to dashboard if admin access is required but user is not admin
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/pos" replace />;
+  }
+  
+  // Check if manager access is required but user is not manager or admin
+  if (requireManager && user?.role !== 'manager' && user?.role !== 'admin') {
+    return <Navigate to="/pos" replace />;
   }
 
   return (

@@ -11,7 +11,8 @@ import {
   LogOut,
   Clock,
   Tag,
-  Layers
+  Layers,
+  Goal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,7 +45,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, href, label, acti
 
 export const AppSidebar = () => {
   const location = useLocation();
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isManager } = useAuth();
   
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -59,14 +60,21 @@ export const AppSidebar = () => {
       
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <nav className="space-y-1">
-          <SidebarItem icon={BarChart4} href="/dashboard" label="Dashboard" active={isActive('/dashboard')} />
+          {/* All users have access to POS, Products, and Customers */}
           <SidebarItem icon={ShoppingCart} href="/pos" label="Point of Sale" active={isActive('/pos')} />
           <SidebarItem icon={Package} href="/products" label="Products" active={isActive('/products')} />
           <SidebarItem icon={Users} href="/customers" label="Customers" active={isActive('/customers')} />
-          <SidebarItem icon={FileText} href="/invoices" label="Invoices" active={isActive('/invoices')} />
-          <SidebarItem icon={Clock} href="/transactions" label="Transactions" active={isActive('/transactions')} />
-          <SidebarItem icon={Layers} href="/admin" label="Admin Panel" active={isActive('/admin')} />
           
+          {/* Manager and admin users have access to Dashboard, Invoices, and Transactions */}
+          {isManager && (
+            <>
+              <SidebarItem icon={BarChart4} href="/dashboard" label="Dashboard" active={isActive('/dashboard')} />
+              <SidebarItem icon={FileText} href="/invoices" label="Invoices" active={isActive('/invoices')} />
+              <SidebarItem icon={Clock} href="/transactions" label="Transactions" active={isActive('/transactions')} />
+            </>
+          )}
+          
+          {/* Only admin has access to Inventory, Settings, and Admin */}
           {isAdmin && (
             <>
               <div className="pt-4 pb-2">
@@ -76,6 +84,7 @@ export const AppSidebar = () => {
               </div>
               <SidebarItem icon={Tag} href="/inventory" label="Inventory" active={isActive('/inventory')} />
               <SidebarItem icon={Settings} href="/settings" label="Settings" active={isActive('/settings')} />
+              <SidebarItem icon={Layers} href="/admin" label="Admin Panel" active={isActive('/admin')} />
             </>
           )}
         </nav>
