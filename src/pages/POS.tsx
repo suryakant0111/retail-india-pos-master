@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ProductSearch } from '@/components/pos/ProductSearch';
 import { ProductGrid } from '@/components/pos/ProductGrid';
@@ -40,7 +39,6 @@ const POS = () => {
   const [invoiceReference, setInvoiceReference] = useState('');
   
   useEffect(() => {
-    // Try to load products from localStorage
     try {
       const storedProducts = localStorage.getItem('products');
       if (storedProducts) {
@@ -54,7 +52,6 @@ const POS = () => {
     }
   }, []);
   
-  // Get unique categories from products
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
   
   const filteredProducts = products.filter(product => {
@@ -74,11 +71,7 @@ const POS = () => {
       return;
     }
     
-    addItem({
-      product,
-      quantity: 1,
-      price: product.price
-    });
+    addItem(product, 1);
     
     toast({
       title: "Product Added",
@@ -99,11 +92,9 @@ const POS = () => {
   
   const updateInventory = () => {
     try {
-      // Get current products
       const allStoredProducts = JSON.parse(localStorage.getItem('products') || '[]');
       const mockProductIds = mockProducts.map(p => p.id);
       
-      // Update quantities for sold items
       const updatedProducts = allStoredProducts.map((product: Product) => {
         const soldItem = items.find(item => item.product.id === product.id);
         if (soldItem) {
@@ -115,7 +106,6 @@ const POS = () => {
         return product;
       });
       
-      // Also update quantities for mock products that were sold
       const updatedMockProducts = mockProducts.map(product => {
         const soldItem = items.find(item => item.product.id === product.id);
         if (soldItem) {
@@ -127,10 +117,8 @@ const POS = () => {
         return product;
       });
       
-      // Save updated products back to localStorage
       localStorage.setItem('products', JSON.stringify(updatedProducts));
       
-      // Update products state with updated quantities
       setProducts([...updatedMockProducts, ...updatedProducts]);
     } catch (error) {
       console.error('Error updating inventory:', error);
@@ -141,23 +129,20 @@ const POS = () => {
     if (!customer) return;
     
     try {
-      // Get current customers
       const storedCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
       
-      // Find and update the customer
       const updatedCustomers = storedCustomers.map((c: any) => {
         if (c.id === customer.id) {
           return {
             ...c,
             totalPurchases: (c.totalPurchases || 0) + total,
-            loyaltyPoints: (c.loyaltyPoints || 0) + Math.floor(total / 100), // 1 point per 100 spent
+            loyaltyPoints: (c.loyaltyPoints || 0) + Math.floor(total / 100),
             updatedAt: new Date()
           };
         }
         return c;
       });
       
-      // If customer not found in storage (might be a mock customer), add them
       if (!storedCustomers.some((c: any) => c.id === customer.id)) {
         updatedCustomers.push({
           ...customer,
@@ -167,7 +152,6 @@ const POS = () => {
         });
       }
       
-      // Save updated customers back to localStorage
       localStorage.setItem('customers', JSON.stringify(updatedCustomers));
     } catch (error) {
       console.error('Error updating customer purchases:', error);
@@ -175,11 +159,9 @@ const POS = () => {
   };
   
   const finalizeTransaction = () => {
-    // Get business settings for receipt/invoice
     const businessSettings = JSON.parse(localStorage.getItem('businessSettings') || '{}');
     const paymentSettings = JSON.parse(localStorage.getItem('paymentSettings') || '{}');
     
-    // Save invoice data to localStorage
     try {
       const newInvoice = {
         id: Date.now().toString(),
@@ -199,12 +181,10 @@ const POS = () => {
         paymentDetails: paymentSettings
       };
       
-      // Get existing invoices or initialize empty array
       const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
       const updatedInvoices = [...storedInvoices, newInvoice];
       localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
       
-      // Save transaction record
       const newTransaction = {
         id: Date.now().toString(),
         invoiceId: newInvoice.id,
@@ -218,10 +198,8 @@ const POS = () => {
       const storedTransactions = JSON.parse(localStorage.getItem('transactions') || '[]');
       localStorage.setItem('transactions', JSON.stringify([...storedTransactions, newTransaction]));
       
-      // Update inventory
       updateInventory();
       
-      // Update customer purchase history
       updateCustomerPurchases();
       
       toast({
@@ -241,7 +219,6 @@ const POS = () => {
   };
   
   const generateReference = () => {
-    // Only generate a new reference if one doesn't exist
     if (!invoiceReference) {
       const ref = `INV${Date.now().toString().slice(-8)}`;
       setInvoiceReference(ref);
@@ -254,15 +231,12 @@ const POS = () => {
     setPaymentMethod(method);
     setShowPaymentDialog(true);
     
-    // Generate reference if not already generated
     generateReference();
   };
   
   const handlePrintReceipt = () => {
-    // Set printing state to show printing animation/message
     setIsPrintingReceipt(true);
     
-    // Simulate the printing process
     setTimeout(() => {
       setIsPrintingReceipt(false);
       

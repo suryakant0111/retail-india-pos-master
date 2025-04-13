@@ -90,6 +90,7 @@ const Products = () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       image: productImage || undefined,
+      minStock: 5, // Default minimum stock
     };
     
     setProducts([...products, newProduct]);

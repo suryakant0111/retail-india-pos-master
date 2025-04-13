@@ -1,5 +1,4 @@
-
-import { User, Product, Customer, Invoice, SalesSummary } from '@/types';
+import { User, Product, Customer, Invoice, SalesSummary, ProductVariant } from '@/types';
 
 export const mockUsers: User[] = [
   {
@@ -27,7 +26,7 @@ export const mockProducts: Product[] = [
     price: 25000,
     costPrice: 20000,
     tax: 18, // GST percentage
-    hsnCode: '8517',
+    hsn: '8517',
     barcode: '890123456789',
     stock: 15,
     minStock: 5,
@@ -44,7 +43,7 @@ export const mockProducts: Product[] = [
     price: 599,
     costPrice: 300,
     tax: 5,
-    hsnCode: '6109',
+    hsn: '6109',
     barcode: '890123456790',
     stock: 50,
     minStock: 10,
@@ -96,7 +95,7 @@ export const mockProducts: Product[] = [
     price: 2500,
     costPrice: 1800,
     tax: 18,
-    hsnCode: '8518',
+    hsn: '8518',
     barcode: '890123456791',
     stock: 25,
     minStock: 5,
@@ -113,7 +112,7 @@ export const mockProducts: Product[] = [
     price: 999,
     costPrice: 600,
     tax: 12,
-    hsnCode: '7323',
+    hsn: '7323',
     barcode: '890123456792',
     stock: 30,
     minStock: 8,
@@ -130,7 +129,7 @@ export const mockProducts: Product[] = [
     price: 1200,
     costPrice: 800,
     tax: 18,
-    hsnCode: '4202',
+    hsn: '4202',
     barcode: '890123456793',
     stock: 20,
     minStock: 5,
@@ -209,6 +208,8 @@ export const mockInvoices: Invoice[] = [
     paymentStatus: 'paid',
     createdBy: mockUsers[1].id,
     createdAt: new Date('2023-03-20'),
+    businessDetails: {},
+    paymentDetails: {},
   },
   {
     id: '2',
@@ -234,6 +235,8 @@ export const mockInvoices: Invoice[] = [
     paymentStatus: 'paid',
     createdBy: mockUsers[1].id,
     createdAt: new Date('2023-03-21'),
+    businessDetails: {},
+    paymentDetails: {},
   },
   {
     id: '3',
@@ -264,6 +267,8 @@ export const mockInvoices: Invoice[] = [
     paymentStatus: 'paid',
     createdBy: mockUsers[1].id,
     createdAt: new Date('2023-03-25'),
+    businessDetails: {},
+    paymentDetails: {},
   },
 ];
 

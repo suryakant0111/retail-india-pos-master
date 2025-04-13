@@ -46,7 +46,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // Calculate totals
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const taxTotal = items.reduce((sum, item) => sum + item.taxAmount, 0);
+  const taxTotal = items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
   
   let finalTotal = subtotal + taxTotal;
   if (discountType === 'percentage') {
@@ -77,9 +77,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedItems[existingItemIndex] = {
         ...existingItem,
         quantity: existingItem.quantity + quantity,
-        taxAmount: existingItem.taxAmount + taxAmount,
+        taxAmount: (existingItem.taxAmount || 0) + taxAmount,
         totalPrice: (existingItem.price * (existingItem.quantity + quantity)) + 
-                    (existingItem.taxAmount + taxAmount)
+                    ((existingItem.taxAmount || 0) + taxAmount)
       };
       setItems(updatedItems);
     } else {

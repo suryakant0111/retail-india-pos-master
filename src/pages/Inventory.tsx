@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,15 +66,15 @@ const Inventory = () => {
         (product.barcode && product.barcode.includes(searchTerm));
       
       const matchesLowStock = lowStockFilter ? 
-        (product.minStock && product.stock <= product.minStock) : true;
+        (product.minStock !== undefined && product.stock <= product.minStock) : true;
       
       return matchesSearch && matchesLowStock;
     })
     .sort((a, b) => {
       // Sort by stock status (low stock first)
       if (lowStockFilter) {
-        const aIsLow = a.minStock && a.stock <= a.minStock;
-        const bIsLow = b.minStock && b.stock <= b.minStock;
+        const aIsLow = a.minStock !== undefined && a.stock <= a.minStock;
+        const bIsLow = b.minStock !== undefined && b.stock <= b.minStock;
         
         if (aIsLow && !bIsLow) return -1;
         if (!aIsLow && bIsLow) return 1;
