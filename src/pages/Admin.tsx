@@ -169,7 +169,7 @@ const AdminPage = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const response = await fetch('http://localhost:3001/create-user', {
+      const response = await fetch('https://retail-india-pos-master.onrender.com/create-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +200,7 @@ const AdminPage = () => {
     setRemovingEmployeeId(id);
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
-    const response = await fetch('http://localhost:3001/remove-employee', {
+    const response = await fetch('https://retail-india-pos-master.onrender.com/remove-employee', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
