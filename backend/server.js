@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { requireAdmin } from './jwtAuth.js';
 
+
 // Load env vars from backend/.env
 dotenv.config();
 

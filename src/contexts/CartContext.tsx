@@ -8,6 +8,8 @@ interface CartContextType {
   customer: Customer | null;
   discountValue: number;
   discountType: 'percentage' | 'fixed';
+  taxRate: number;
+  setTaxRate: (rate: number) => void;
   addItem: (product: Product, quantity: number, variant?: ProductVariant) => void;
   removeItem: (index: number) => void;
   updateQuantity: (index: number, quantity: number) => void;
@@ -24,6 +26,8 @@ const CartContext = createContext<CartContextType>({
   customer: null,
   discountValue: 0,
   discountType: 'percentage',
+  taxRate: 18,
+  setTaxRate: () => {},
   addItem: () => {},
   removeItem: () => {},
   updateQuantity: () => {},
@@ -42,26 +46,25 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customer, setCustomerState] = useState<Customer | null>(null);
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [taxRate, setTaxRate] = useState(18);
   const { toast } = useToast();
   
   // Calculate totals
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const taxTotal = items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
-  
-  let finalTotal = subtotal + taxTotal;
+  let discountedSubtotal = subtotal;
   if (discountType === 'percentage') {
-    finalTotal = finalTotal * (1 - (discountValue / 100));
+    discountedSubtotal = subtotal * (1 - (discountValue / 100));
   } else {
-    finalTotal = finalTotal - discountValue;
+    discountedSubtotal = subtotal - discountValue;
   }
+  discountedSubtotal = Math.max(0, discountedSubtotal);
+  const taxTotal = discountedSubtotal * (taxRate / 100);
+  let finalTotal = discountedSubtotal + taxTotal;
+  finalTotal = Math.max(0, finalTotal);
   
-  finalTotal = Math.max(0, finalTotal); // Ensure total is not negative
-
   const addItem = (product: Product, quantity: number, variant?: ProductVariant) => {
     const price = variant ? variant.price : product.price;
-    const taxRate = product.tax / 100;
-    const taxAmount = price * taxRate * quantity;
-    
+    // No per-product tax
     // Check if this product/variant is already in cart
     const existingItemIndex = items.findIndex(item => {
       if (variant) {
@@ -77,9 +80,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedItems[existingItemIndex] = {
         ...existingItem,
         quantity: existingItem.quantity + quantity,
-        taxAmount: (existingItem.taxAmount || 0) + taxAmount,
-        totalPrice: (existingItem.price * (existingItem.quantity + quantity)) + 
-                    ((existingItem.taxAmount || 0) + taxAmount)
+        totalPrice: (existingItem.price * (existingItem.quantity + quantity))
       };
       setItems(updatedItems);
     } else {
@@ -89,8 +90,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         variant,
         quantity,
         price,
-        taxAmount,
-        totalPrice: (price * quantity) + taxAmount
+        totalPrice: (price * quantity)
       }]);
     }
     
@@ -113,8 +113,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const updatedItems = [...items];
     const item = updatedItems[index];
-    const taxRate = item.product.tax / 100;
-    const newTaxAmount = item.price * taxRate * quantity;
+    const newTaxAmount = item.price * (taxRate / 100) * quantity;
     
     updatedItems[index] = {
       ...item,
@@ -156,6 +155,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customer,
         discountValue,
         discountType,
+        taxRate,
+        setTaxRate,
         addItem,
         removeItem,
         updateQuantity,

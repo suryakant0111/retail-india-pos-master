@@ -393,6 +393,21 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              {/* GST/Tax Rate Field */}
+              <FormField
+                control={productForm.control}
+                name="tax"
+                defaultValue={18}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GST/Tax Rate (%)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} max={100} step={0.01} placeholder="Enter GST/Tax rate" {...field} value={field.value ?? 18} onChange={e => field.onChange(Number(e.target.value))} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               
               <FormField
                 control={productForm.control}

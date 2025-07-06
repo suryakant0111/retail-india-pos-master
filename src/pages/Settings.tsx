@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { Building, User, CreditCard, Store, Wallet, SaveIcon } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PaymentSettings {
   upiId: string;
@@ -27,6 +29,7 @@ interface BusinessSettings {
 
 const Settings = () => {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState('payments');
   
   // Payment settings state
@@ -40,29 +43,37 @@ const Settings = () => {
   
   // Business settings state
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
-    businessName: 'Retail POS',
-    address: '123 Main Street, City',
-    phone: '123-456-7890',
-    email: 'contact@retailpos.com',
-    gstNumber: 'GST1234567890',
+    businessName: '',
+    address: '',
+    phone: '',
+    email: '',
+    gstNumber: '',
   });
-  
+  const [loadingBusiness, setLoadingBusiness] = useState(false);
+  const [savingBusiness, setSavingBusiness] = useState(false);
+
   useEffect(() => {
-    // Load settings from localStorage
-    try {
-      const storedPaymentSettings = localStorage.getItem('paymentSettings');
-      if (storedPaymentSettings) {
-        setPaymentSettings(JSON.parse(storedPaymentSettings));
+    async function fetchBusinessSettings() {
+      if (!profile?.shop_id) return;
+      setLoadingBusiness(true);
+      const { data, error } = await supabase
+        .from('shops')
+        .select('name, address, phone, email, gstin')
+        .eq('id', profile.shop_id)
+        .single();
+      if (data) {
+        setBusinessSettings({
+          businessName: data.name || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          gstNumber: data.gstin || '',
+        });
       }
-      
-      const storedBusinessSettings = localStorage.getItem('businessSettings');
-      if (storedBusinessSettings) {
-        setBusinessSettings(JSON.parse(storedBusinessSettings));
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
+      setLoadingBusiness(false);
     }
-  }, []);
+    fetchBusinessSettings();
+  }, [profile?.shop_id]);
   
   const handlePaymentSettingChange = (field: keyof PaymentSettings, value: string | boolean) => {
     setPaymentSettings({
@@ -96,20 +107,31 @@ const Settings = () => {
     }
   };
   
-  const saveBusinessSettings = () => {
-    try {
-      localStorage.setItem('businessSettings', JSON.stringify(businessSettings));
+  const saveBusinessSettings = async () => {
+    if (!profile?.shop_id) return;
+    setSavingBusiness(true);
+    const { error } = await supabase
+      .from('shops')
+      .update({
+        name: businessSettings.businessName,
+        address: businessSettings.address,
+        phone: businessSettings.phone,
+        email: businessSettings.email,
+        gstin: businessSettings.gstNumber,
+      })
+      .eq('id', profile.shop_id);
+    setSavingBusiness(false);
+    if (!error) {
       toast({
-        title: "Settings Saved",
-        description: "Business settings have been updated successfully.",
-        variant: "default",
+        title: 'Settings Saved',
+        description: 'Business settings have been updated successfully.',
+        variant: 'default',
       });
-    } catch (error) {
-      console.error('Error saving business settings:', error);
+    } else {
       toast({
-        title: "Error",
-        description: "Failed to save business settings.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to save business settings.',
+        variant: 'destructive',
       });
     }
   };
@@ -227,6 +249,7 @@ const Settings = () => {
                     id="businessName" 
                     value={businessSettings.businessName}
                     onChange={(e) => handleBusinessSettingChange('businessName', e.target.value)}
+                    disabled={loadingBusiness || savingBusiness}
                   />
                 </div>
                 <div className="space-y-2">
@@ -235,6 +258,7 @@ const Settings = () => {
                     id="gstNumber" 
                     value={businessSettings.gstNumber}
                     onChange={(e) => handleBusinessSettingChange('gstNumber', e.target.value)}
+                    disabled={loadingBusiness || savingBusiness}
                   />
                 </div>
               </div>
@@ -245,6 +269,7 @@ const Settings = () => {
                   id="address" 
                   value={businessSettings.address}
                   onChange={(e) => handleBusinessSettingChange('address', e.target.value)}
+                  disabled={loadingBusiness || savingBusiness}
                 />
               </div>
               
@@ -255,6 +280,7 @@ const Settings = () => {
                     id="phone" 
                     value={businessSettings.phone}
                     onChange={(e) => handleBusinessSettingChange('phone', e.target.value)}
+                    disabled={loadingBusiness || savingBusiness}
                   />
                 </div>
                 <div className="space-y-2">
@@ -263,14 +289,15 @@ const Settings = () => {
                     id="email" 
                     value={businessSettings.email}
                     onChange={(e) => handleBusinessSettingChange('email', e.target.value)}
+                    disabled={loadingBusiness || savingBusiness}
                   />
                 </div>
               </div>
             </CardContent>
             <CardFooter>
-              <Button onClick={saveBusinessSettings}>
+              <Button onClick={saveBusinessSettings} disabled={loadingBusiness || savingBusiness}>
                 <SaveIcon className="mr-2 h-4 w-4" />
-                Save Business Settings
+                {savingBusiness ? 'Saving...' : 'Save Business Settings'}
               </Button>
             </CardFooter>
           </Card>

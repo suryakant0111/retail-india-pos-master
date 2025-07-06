@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { DiscountSection } from './DiscountSection';
+import { useCart } from '@/contexts/CartContext';
 
 interface OrderSummaryProps {
   subtotal: number;
@@ -23,6 +24,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   setDiscountTypeInput,
   handleDiscountChange
 }) => {
+  const { taxRate, setTaxRate } = useCart();
   return (
     <div className="mb-4">
       <div className="flex justify-between mb-2">
@@ -33,6 +35,19 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
             currency: 'INR',
           }).format(subtotal)}
         </span>
+      </div>
+      {/* Cart-level Tax Rate Input */}
+      <div className="flex justify-between mb-2 items-center">
+        <span className="text-muted-foreground">Tax Rate (%)</span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={0.01}
+          value={taxRate}
+          onChange={e => setTaxRate(Number(e.target.value))}
+          className="w-16 text-right border rounded px-1 py-0.5"
+        />
       </div>
       <div className="flex justify-between mb-2">
         <span className="text-muted-foreground">Tax</span>

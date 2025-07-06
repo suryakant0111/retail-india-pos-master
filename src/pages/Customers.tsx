@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, UserPlus, Phone, Mail, MapPin, Edit, UserRound } from 'lucide-react';
+import { Search, UserPlus, Phone, Mail, MapPin, Edit, UserRound, Trash2 } from 'lucide-react';
 import { Customer } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,11 +29,18 @@ const Customers = () => {
   // Fetch customers from Supabase
   useEffect(() => {
     const fetchCustomers = async () => {
+      if (!profile?.shop_id) {
+        setCustomers([]);
+        setLoading(false);
+        return;
+      }
+      console.log('Fetching customers for shop_id:', profile.shop_id);
       setLoading(true);
       setError(null);
       const { data, error } = await supabase
         .from('customers')
         .select('*')
+        .eq('shop_id', profile.shop_id)
         .order('createdAt', { ascending: false });
       if (error) {
         setError('Failed to load customers');
@@ -51,7 +58,7 @@ const Customers = () => {
       setLoading(false);
     };
     fetchCustomers();
-  }, []);
+  }, [profile?.shop_id]);
 
   // Filter customers based on search term
   const filteredCustomers = customers.filter(customer => 
@@ -70,6 +77,7 @@ const Customers = () => {
       return;
     }
     const now = new Date();
+    console.log('Add Customer: profile.shop_id', profile.shop_id);
     const customerToAdd = {
       name: newCustomer.name,
       phone: newCustomer.phone,
@@ -81,15 +89,41 @@ const Customers = () => {
       updatedAt: now.toISOString(),
       shop_id: profile.shop_id,
     };
+    console.log('Add Customer: customerToAdd', customerToAdd);
+    // Check for existing customer with same phone/email in this shop only
+    const { data: existing, error: existingError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('shop_id', profile.shop_id);
+    if (existingError) {
+      toast({
+        title: 'Error',
+        description: 'Failed to check for duplicates: ' + existingError.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    const duplicate = (existing || []).find(
+      c => c.phone === newCustomer.phone || (newCustomer.email && c.email === newCustomer.email)
+    );
+    if (duplicate) {
+      toast({
+        title: 'Customer Exists',
+        description: 'A customer with this phone or email already exists in this shop.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const { data, error } = await supabase
       .from('customers')
       .insert([customerToAdd])
       .select()
       .single();
     if (error) {
+      console.error('Supabase insert error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to add customer',
+        description: 'Failed to add customer: ' + error.message,
         variant: 'destructive',
       });
       return;
@@ -109,6 +143,17 @@ const Customers = () => {
       description: `${data.name} has been added to your customer database.`,
       variant: 'success',
     });
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!window.confirm('Are you sure you want to delete this customer?')) return;
+    const { error } = await supabase.from('customers').delete().eq('id', customerId);
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to delete customer', variant: 'destructive' });
+    } else {
+      setCustomers(customers.filter(c => c.id !== customerId));
+      toast({ title: 'Customer Deleted', description: 'Customer has been deleted.', variant: 'success' });
+    }
   };
 
   return (
@@ -156,6 +201,7 @@ const Customers = () => {
                   <TableHead>Total Purchases</TableHead>
                   <TableHead>Loyalty Points</TableHead>
                   <TableHead>Added On</TableHead>
+                  <TableHead>Delete</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -192,11 +238,16 @@ const Customers = () => {
                       </TableCell>
                       <TableCell>{customer.loyaltyPoints || 0}</TableCell>
                       <TableCell>{customer.createdAt instanceof Date ? customer.createdAt.toLocaleDateString() : ''}</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer.id)} title="Delete Customer">
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6">
+                    <TableCell colSpan={6} className="text-center py-6">
                       <div className="flex flex-col items-center justify-center text-muted-foreground">
                         <UserRound className="h-10 w-10 mb-2" />
                         <p>No customers found</p>

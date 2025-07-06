@@ -55,15 +55,20 @@ const POS = () => {
   useEffect(() => {
     fetchProducts();
     async function fetchCustomers() {
-      if (!profile?.shop_id) return;
+      if (!profile?.shop_id) {
+        console.log('POS profile.shop_id is missing:', profile);
+        return;
+      }
       const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
       if (error) {
         console.error('Error fetching customers:', error);
       } else if (data) {
         setCustomers(data);
+        console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
       }
     }
     fetchCustomers();
+    console.log('POS profile.shop_id:', profile?.shop_id);
   }, [profile?.shop_id]);
 
   const refreshCustomers = async () => {
@@ -90,12 +95,21 @@ const POS = () => {
       });
       return;
     }
-    
-    addItem(product, 1);
-    
+    // Prompt for custom tax rate
+    let taxRate = 18;
+    const userInput = window.prompt(`Enter GST/Tax Rate (%) for ${product.name}:`, product.tax !== undefined ? product.tax.toString() : '18');
+    if (userInput !== null && userInput !== '') {
+      const parsed = parseFloat(userInput);
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+        taxRate = parsed;
+      }
+    } else if (product.tax !== undefined) {
+      taxRate = product.tax;
+    }
+    addItem(product, 1, undefined, taxRate);
     toast({
       title: "Product Added",
-      description: `${product.name} has been added to cart`,
+      description: `${product.name} has been added to cart with ${taxRate}% GST/Tax`,
       variant: "success",
     });
   };
@@ -176,6 +190,18 @@ const POS = () => {
           description: invoiceInsertError.message,
           variant: 'destructive',
         });
+      }
+
+      // Update customer's totalPurchases and loyaltyPoints in Supabase
+      if (customer && customer.id) {
+        await supabase
+          .from('customers')
+          .update({
+            totalPurchases: (customer.totalPurchases || 0) + total,
+            loyaltyPoints: (customer.loyaltyPoints || 0) + Math.floor(total / 100),
+            updatedAt: new Date().toISOString(),
+          })
+          .eq('id', customer.id);
       }
 
       const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');

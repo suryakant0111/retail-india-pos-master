@@ -6,6 +6,8 @@ import { Printer, Download } from 'lucide-react';
 import { CartItem, Customer } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 interface BusinessSettings {
   businessName: string;
@@ -48,100 +50,93 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
   onFinalize,
   isPrintingReceipt
 }) => {
+  const { profile } = useAuth();
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
-    businessName: 'RETAIL POS',
-    address: '123 Main Street, City',
-    phone: '123-456-7890',
-    email: 'contact@example.com',
-    gstNumber: 'GST1234567890'
+    businessName: '',
+    address: '',
+    phone: '',
+    email: '',
+    gstNumber: ''
   });
-  
+  const [loadingBusiness, setLoadingBusiness] = useState(false);
+
   useEffect(() => {
-    // Load business settings from localStorage whenever the dialog opens
-    if (open) {
-      try {
-        const storedSettings = localStorage.getItem('businessSettings');
-        if (storedSettings) {
-          const settings = JSON.parse(storedSettings) as BusinessSettings;
-          setBusinessSettings(settings);
-        }
-      } catch (error) {
-        console.error('Error loading business settings:', error);
+    async function fetchBusinessSettings() {
+      if (!profile?.shop_id) return;
+      setLoadingBusiness(true);
+      const { data, error } = await supabase
+        .from('shops')
+        .select('name, address, phone, email, gstin')
+        .eq('id', profile.shop_id)
+        .single();
+      if (data) {
+        setBusinessSettings({
+          businessName: data.name || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          gstNumber: data.gstin || '',
+        });
       }
+      setLoadingBusiness(false);
     }
-  }, [open]);
+    if (open) fetchBusinessSettings();
+  }, [open, profile?.shop_id]);
   
   const generatePDF = () => {
-    const doc = new jsPDF();
-    
-    // Add header with business details - industry standard
-    doc.setFontSize(18);
-    doc.text(businessSettings.businessName, 105, 15, { align: 'center' });
-    
-    doc.setFontSize(10);
-    doc.text(businessSettings.address, 105, 23, { align: 'center' });
-    doc.text(`Phone: ${businessSettings.phone}`, 105, 28, { align: 'center' });
-    doc.text(`Email: ${businessSettings.email}`, 105, 33, { align: 'center' });
-    
-    // GST Information - important for business invoices
-    if (businessSettings.gstNumber) {
-      doc.text(`GSTIN: ${businessSettings.gstNumber}`, 105, 38, { align: 'center' });
-    }
-    
-    doc.line(10, 42, 200, 42); // Separator line
-    
-    // Invoice details - clear section
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 40;
+
+    // Shop/Business Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text(businessSettings.businessName, pageWidth / 2, y, { align: 'center' });
+    y += 24;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
-    doc.text(`Invoice: #${reference}`, 14, 50);
-    doc.text(`Date: ${new Date().toLocaleString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })}`, 14, 56);
-    
-    // Customer details
-    let yPos = 62;
-    if (customer) {
-      doc.text('Bill To:', 14, yPos);
-      yPos += 6;
-      doc.text(`${customer.name}`, 14, yPos);
-      yPos += 5;
-      if (customer.phone) {
-        doc.text(`Phone: ${customer.phone}`, 14, yPos);
-        yPos += 5;
-      }
-      if (customer.email) {
-        doc.text(`Email: ${customer.email}`, 14, yPos);
-        yPos += 5;
-      }
-      if (customer.address) {
-        doc.text(`Address: ${customer.address}`, 14, yPos);
-        yPos += 5;
-      }
-    } else {
-      doc.text('Bill To: Walk-in Customer', 14, yPos);
-      yPos += 10;
+    doc.text(businessSettings.address, pageWidth / 2, y, { align: 'center' });
+    y += 16;
+    doc.text(`Phone: ${businessSettings.phone}    Email: ${businessSettings.email}`, pageWidth / 2, y, { align: 'center' });
+    y += 16;
+    if (businessSettings.gstNumber) {
+      doc.text(`GSTIN: ${businessSettings.gstNumber}`, pageWidth / 2, y, { align: 'center' });
+      y += 16;
     }
-    
-    doc.line(10, yPos, 200, yPos); // Separator line
-    yPos += 5;
-    
-    // Payment information
-    doc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 140, 50, { align: 'right' });
-    doc.text(`Status: PAID`, 140, 56, { align: 'right' });
-    
-    // Create table with items - well formatted
+    y += 8;
+    doc.setDrawColor(200);
+    doc.line(40, y, pageWidth - 40, y);
+    y += 18;
+
+    // Invoice Info
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('TAX INVOICE', 40, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(`Invoice #: ${reference}`, 40, y + 18);
+    doc.text(`Date: ${new Date().toLocaleString('en-IN', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })}`, 40, y + 36);
+    let customerY = y + 18;
+    if (customer) {
+      doc.text(`Customer: ${customer.name}`, pageWidth - 220, customerY);
+      customerY += 18;
+      if (customer.phone) doc.text(`Phone: ${customer.phone}`, pageWidth - 220, customerY);
+      if (customer.email) doc.text(`Email: ${customer.email}`, pageWidth - 220, customerY + 18);
+    }
+    y += 54;
+    doc.line(40, y, pageWidth - 40, y);
+    y += 18;
+
+    // Items Table
     const tableColumn = ["#", "Item Description", "Price", "Qty", "HSN", "Tax", "Amount"];
     const tableRows: any[] = [];
-    
     items.forEach((item, index) => {
-      const taxPerItem = (item.product.taxRate || 0) * item.price / 100;
       const itemData = [
         index + 1,
-        item.variant ? 
-          `${item.product.name} (${Object.entries(item.variant.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')})` 
+        item.variant ?
+          `${item.product.name} (${Object.entries(item.variant.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')})`
           : item.product.name,
         `₹${item.price.toFixed(2)}`,
         item.quantity,
@@ -151,65 +146,67 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
       ];
       tableRows.push(itemData);
     });
-    
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: yPos,
-      theme: 'grid',
-      headStyles: { fillColor: [60, 60, 60], textColor: [255, 255, 255] },
+      startY: y,
+      theme: 'striped',
+      headStyles: { fillColor: [44, 62, 80], textColor: [255, 255, 255], fontStyle: 'bold' },
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 4 },
       columnStyles: {
-        0: { cellWidth: 10 }, // #
-        1: { cellWidth: 60 }, // Description
-        2: { cellWidth: 25 }, // Price
-        3: { cellWidth: 15 }, // Qty
-        4: { cellWidth: 20 }, // HSN
-        5: { cellWidth: 20 }, // Tax
-        6: { cellWidth: 30 }, // Amount
+        0: { cellWidth: 24 },
+        1: { cellWidth: 160 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 36 },
+        4: { cellWidth: 48 },
+        5: { cellWidth: 48 },
+        6: { cellWidth: 64 },
       },
+      margin: { left: 40, right: 40 },
     });
-    
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
-    
-    // Add totals section with tax breakdown - important for GST invoices
-    doc.text(`Subtotal: ₹${subtotal.toFixed(2)}`, 150, finalY, { align: 'right' });
-    
-    // Tax breakdown - often required for legal compliance
+    let finalY = (doc as any).lastAutoTable.finalY + 16;
+
+    // Totals Section
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Summary', 40, finalY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    finalY += 14;
+    doc.text(`Subtotal: ₹${subtotal.toFixed(2)}`, 40, finalY);
+    finalY += 14;
     const sgst = taxTotal / 2;
     const cgst = taxTotal / 2;
-    
-    doc.text(`SGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${sgst.toFixed(2)}`, 150, finalY + 7, { align: 'right' });
-    doc.text(`CGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${cgst.toFixed(2)}`, 150, finalY + 14, { align: 'right' });
-    
-    // Discount information
+    doc.text(`SGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${sgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    doc.text(`CGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${cgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
     if (discountValue > 0) {
-      const discountAmount = discountType === 'percentage' 
-        ? (subtotal + taxTotal) * (discountValue / 100) 
+      const discountAmount = discountType === 'percentage'
+        ? (subtotal + taxTotal) * (discountValue / 100)
         : discountValue;
-      doc.text(`Discount${discountType === 'percentage' ? ` (${discountValue}%)` : ''}: -₹${discountAmount.toFixed(2)}`, 150, finalY + 21, { align: 'right' });
-      doc.text(`Total: ₹${total.toFixed(2)}`, 150, finalY + 28, { align: 'right' });
-      
-      // Amount in words - common in formal invoices
-      doc.text(`Amount in words: ${amountInWords(total)}`, 14, finalY + 35);
-    } else {
-      doc.text(`Total: ₹${total.toFixed(2)}`, 150, finalY + 21, { align: 'right' });
-      
-      // Amount in words - common in formal invoices
-      doc.text(`Amount in words: ${amountInWords(total)}`, 14, finalY + 28);
+      doc.text(`Discount${discountType === 'percentage' ? ` (${discountValue}%)` : ''}: -₹${discountAmount.toFixed(2)}`, 40, finalY);
+      finalY += 14;
     }
-    
-    // Add terms and conditions - standard in formal invoices
-    doc.setFontSize(9);
-    const termsY = finalY + 45;
-    doc.text('Terms & Conditions:', 14, termsY);
-    doc.text('1. Goods once sold will not be taken back or exchanged.', 14, termsY + 5);
-    doc.text('2. This is a computer generated invoice and does not require a signature.', 14, termsY + 10);
-    
-    // Add footer with thank you note
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total: ₹${total.toFixed(2)}`, 40, finalY);
+    finalY += 18;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text('Thank you for your business!', 105, 280, { align: 'center' });
-    
-    // Save the PDF
+    doc.text(`Amount in words: ${amountInWords(total)}`, 40, finalY);
+    finalY += 24;
+    doc.setDrawColor(200);
+    doc.line(40, finalY, pageWidth - 40, finalY);
+    finalY += 18;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(11);
+    doc.text('Thank you for your business!', pageWidth / 2, finalY, { align: 'center' });
+    finalY += 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('Terms & Conditions:', 40, finalY);
+    doc.text('1. Goods once sold will not be taken back or exchanged.', 40, finalY + 12);
+    doc.text('2. This is a computer generated invoice and does not require a signature.', 40, finalY + 24);
     doc.save(`invoice-${reference}.pdf`);
   };
   
@@ -279,10 +276,10 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
     
     return result + ' Only';
   };
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md print:max-w-full print:p-0">
         <DialogHeader>
           <DialogTitle>Tax Invoice</DialogTitle>
           <DialogDescription>
@@ -298,16 +295,16 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
             </span>
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="border-t border-b py-4 my-4">
+        {loadingBusiness ? (
+          <div className="text-center py-8">Loading business details...</div>
+        ) : (
+        <div className="border-t border-b py-4 my-4 print:border-none print:py-2">
           <div className="text-center mb-4">
             <h3 className="font-bold text-lg">{businessSettings.businessName}</h3>
             <p className="text-sm text-muted-foreground">{businessSettings.address}</p>
             <p className="text-sm text-muted-foreground">Phone: {businessSettings.phone}</p>
+            <p className="text-sm text-muted-foreground">Email: {businessSettings.email}</p>
             <p className="text-sm text-muted-foreground">GSTIN: {businessSettings.gstNumber}</p>
-            <div className="border-t border-dashed my-2"></div>
-            {customer && <p className="text-sm mt-2">Customer: {customer.name}</p>}
-            {customer && customer.phone && <p className="text-sm">Phone: {customer.phone}</p>}
           </div>
           
           <div className="space-y-2">
@@ -386,6 +383,7 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
             <p className="text-xs text-muted-foreground mt-1">Authorized Signatory</p>
           </div>
         </div>
+        )}
         
         <DialogFooter className="flex justify-between">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -169,7 +169,8 @@ const AdminPage = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const response = await fetch('https://retail-india-pos-master.onrender.com/create-user', {
+      const API_URL = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${API_URL}/create-user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +201,8 @@ const AdminPage = () => {
     setRemovingEmployeeId(id);
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
-    const response = await fetch('https://retail-india-pos-master.onrender.com/remove-employee', {
+    const API_URL = import.meta.env.VITE_API_URL;
+    const response = await fetch(`${API_URL}/remove-employee`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -232,6 +234,8 @@ const AdminPage = () => {
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="employees">Employees</TabsTrigger>
+          <TabsTrigger value="gst-filing">GST Filing</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="products">
           <Card>
@@ -530,6 +534,17 @@ const AdminPage = () => {
               </form>
             )}
           </div>
+        </TabsContent>
+        <TabsContent value="gst-filing">
+          <div className="flex flex-col items-center justify-center py-16">
+            <Link to="/gst-filing">
+              <Button size="lg" className="text-lg">Go to GST Filing & Reports</Button>
+            </Link>
+            <p className="mt-4 text-muted-foreground text-center max-w-md">Generate and download GST-compliant sales reports (GSTR-1) for your business.</p>
+          </div>
+        </TabsContent>
+        <TabsContent value="settings">
+          {/* Remove GST Filing button from here to avoid duplication */}
         </TabsContent>
       </Tabs>
     </div>

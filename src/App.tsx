@@ -22,6 +22,7 @@ import Invoices from "./pages/Invoices";
 import AdminPage from "./pages/Admin";
 import ShopPage from "./pages/Shop";
 import SignupPage from "./pages/Signup";
+import GSTFiling from "./pages/GSTFiling";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,7 @@ const App = () => (
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/shop" element={<ShopPage />} />
+                <Route path="/gst-filing" element={<GSTFiling />} />
               </Route>
               
               {/* Catch-all route */}

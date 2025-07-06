@@ -13,6 +13,7 @@ import { OrderSummary } from './OrderSummary';
 import { PaymentButtons } from './PaymentButtons';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/types';
+import { useProfile } from '@/hooks/useProfile';
 
 interface CartSectionProps {
   customers: Customer[];
@@ -41,6 +42,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
     removeItem,
     updateQuantity 
   } = useCart();
+  const { profile } = useProfile();
   
   const { toast } = useToast();
   const [discountInput, setDiscountInput] = useState(discountValue.toString());
@@ -62,38 +64,52 @@ export const CartSection: React.FC<CartSectionProps> = ({
     if (!newCustomer.name || !newCustomer.phone) {
       return;
     }
-
     // Check for existing customer by phone or email
-    const { data: existing, error } = await supabase
+    console.log('Cart Add Customer: profile.shop_id', profile?.shop_id);
+    const customerToAdd = {
+      name: newCustomer.name,
+      phone: newCustomer.phone,
+      email: newCustomer.email || null,
+      address: newCustomer.address || null,
+      loyaltyPoints: 0,
+      totalPurchases: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      shop_id: profile?.shop_id || null,
+    };
+    console.log('Cart Add Customer: customerToAdd', customerToAdd);
+    const { data: existing, error: existingError } = await supabase
       .from('customers')
       .select('*')
-      .or(`phone.eq.${newCustomer.phone},email.eq.${newCustomer.email || ''}`);
-    if (existing && existing.length > 0) {
+      .eq('shop_id', profile?.shop_id);
+    if (existingError) {
       toast({
-        title: 'Customer Exists',
-        description: 'A customer with this phone or email already exists.',
+        title: 'Error',
+        description: 'Failed to check for duplicates: ' + existingError.message,
         variant: 'destructive',
       });
       return;
     }
-
-    // Insert new customer
+    const duplicate = (existing || []).find(
+      c => c.phone === newCustomer.phone || (newCustomer.email && c.email === newCustomer.email)
+    );
+    if (duplicate) {
+      toast({
+        title: 'Customer Exists',
+        description: 'A customer with this phone or email already exists in this shop.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Insert new customer with shop_id
     const { data, error: insertError } = await supabase.from('customers').insert([
-      {
-        name: newCustomer.name,
-        phone: newCustomer.phone,
-        email: newCustomer.email || null,
-        address: newCustomer.address || null,
-        loyaltyPoints: 0,
-        totalPurchases: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
+      customerToAdd
     ]).select();
     if (insertError) {
+      console.error('Supabase insert error:', insertError);
       toast({
         title: 'Error',
-        description: insertError.message,
+        description: 'Failed to add customer: ' + insertError.message,
         variant: 'destructive',
       });
       return;
@@ -107,6 +123,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
         description: `${data[0].name} has been added as a new customer`,
         variant: 'success',
       });
+      await refreshCustomers();
     }
   };
   

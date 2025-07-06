@@ -21,6 +21,38 @@ const Invoices = () => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { profile } = useProfile();
+  // Business/shop details state
+  const [businessSettings, setBusinessSettings] = useState({
+    businessName: '',
+    address: '',
+    phone: '',
+    email: '',
+    gstNumber: ''
+  });
+  const [loadingBusiness, setLoadingBusiness] = useState(false);
+
+  useEffect(() => {
+    async function fetchBusinessSettings() {
+      if (!profile?.shop_id) return;
+      setLoadingBusiness(true);
+      const { data, error } = await supabase
+        .from('shops')
+        .select('name, address, phone, email, gstin')
+        .eq('id', profile.shop_id)
+        .single();
+      if (data) {
+        setBusinessSettings({
+          businessName: data.name || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          gstNumber: data.gstin || '',
+        });
+      }
+      setLoadingBusiness(false);
+    }
+    fetchBusinessSettings();
+  }, [profile?.shop_id]);
 
   const fetchInvoices = async () => {
     setLoading(true);
@@ -49,72 +81,179 @@ const Invoices = () => {
     return matchesSearch && matchesStatus;
   });
   
-  const generateInvoicePDF = (invoice: Invoice) => {
-    const doc = new jsPDF();
-    
-    // Add title
-    doc.setFontSize(20);
-    doc.text('RETAIL POS', 105, 20, { align: 'center' });
-    
-    doc.setFontSize(10);
-    doc.text('123 Main Street, City', 105, 30, { align: 'center' });
-    doc.text('Phone: 123-456-7890', 105, 35, { align: 'center' });
-    
-    // Add invoice details
-    doc.setFontSize(12);
-    doc.text(`Invoice: #${invoice.invoiceNumber}`, 14, 45);
-    doc.text(`Date: ${invoice.createdAt.toLocaleString('en-IN')}`, 14, 50);
-    
-    if (invoice.customer) {
-      doc.text(`Customer: ${invoice.customer.name}`, 14, 55);
-      if (invoice.customer.phone) doc.text(`Phone: ${invoice.customer.phone}`, 14, 60);
+  // Helper: Amount in words (simple, can be improved)
+  const amountInWords = (amount: number): string => {
+    const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const formatted = amount.toFixed(2);
+    const parts = formatted.split('.');
+    const rupees = parseInt(parts[0]);
+    const paise = parseInt(parts[1]);
+    if (rupees === 0) return 'Zero Rupees Only';
+    let result = '';
+    const thousands = Math.floor(rupees / 1000);
+    if (thousands > 0) {
+      result += (thousands > 9 ? amountInWords(thousands) : units[thousands]) + ' Thousand ';
+      if (rupees % 1000 === 0) result += 'Rupees Only';
     }
-    
-    // Create table with items
-    const tableColumn = ["Item", "Price", "Qty", "Total"];
+    const hundreds = Math.floor((rupees % 1000) / 100);
+    if (hundreds > 0) {
+      result += units[hundreds] + ' Hundred ';
+      if (rupees % 100 === 0) result += 'Rupees Only';
+    }
+    const remaining = rupees % 100;
+    if (remaining > 0) {
+      if (result !== '') result += 'and ';
+      if (remaining < 10) {
+        result += units[remaining] + ' Rupees';
+      } else if (remaining < 20) {
+        result += teens[remaining - 10] + ' Rupees';
+      } else {
+        result += tens[Math.floor(remaining / 10)];
+        if (remaining % 10 > 0) {
+          result += ' ' + units[remaining % 10];
+        }
+        result += ' Rupees';
+      }
+    }
+    if (paise > 0) {
+      result += ' and ';
+      if (paise < 10) {
+        result += units[paise] + ' Paise';
+      } else if (paise < 20) {
+        result += teens[paise - 10] + ' Paise';
+      } else {
+        result += tens[Math.floor(paise / 10)];
+        if (paise % 10 > 0) {
+          result += ' ' + units[paise % 10];
+        }
+        result += ' Paise';
+      }
+    }
+    return result + ' Only';
+  };
+
+  const generateInvoicePDF = (invoice: Invoice) => {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 40;
+    // Business Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text(businessSettings.businessName, pageWidth / 2, y, { align: 'center' });
+    y += 24;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(businessSettings.address, pageWidth / 2, y, { align: 'center' });
+    y += 16;
+    doc.text(`Phone: ${businessSettings.phone}    Email: ${businessSettings.email}`, pageWidth / 2, y, { align: 'center' });
+    y += 16;
+    if (businessSettings.gstNumber) {
+      doc.text(`GSTIN: ${businessSettings.gstNumber}`, pageWidth / 2, y, { align: 'center' });
+      y += 16;
+    }
+    y += 8;
+    doc.setDrawColor(200);
+    doc.line(40, y, pageWidth - 40, y);
+    y += 18;
+    // Invoice Info
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('TAX INVOICE', 40, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(`Invoice #: ${invoice.invoiceNumber}`, 40, y + 18);
+    doc.text(`Date: ${invoice.createdAt.toLocaleString('en-IN', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })}`, 40, y + 36);
+    let customerY = y + 18;
+    if (invoice.customer) {
+      doc.text(`Customer: ${invoice.customer.name}`, pageWidth - 220, customerY);
+      customerY += 18;
+      if (invoice.customer.phone) doc.text(`Phone: ${invoice.customer.phone}`, pageWidth - 220, customerY);
+      if (invoice.customer.email) doc.text(`Email: ${invoice.customer.email}`, pageWidth - 220, customerY + 18);
+    }
+    y += 54;
+    doc.line(40, y, pageWidth - 40, y);
+    y += 18;
+    // Items Table
+    const tableColumn = ["#", "Item Description", "Price", "Qty", "HSN", "Tax", "Amount"];
     const tableRows: any[] = [];
-    
-    invoice.items.forEach(item => {
+    invoice.items.forEach((item, index) => {
       const itemData = [
-        item.product.name,
+        index + 1,
+        item.variant ?
+          `${item.product.name} (${Object.entries(item.variant.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')})`
+          : item.product.name,
         `₹${item.price.toFixed(2)}`,
         item.quantity,
+        item.product.hsn || 'N/A',
+        `${item.product.taxRate || 0}%`,
         `₹${(item.price * item.quantity).toFixed(2)}`
       ];
       tableRows.push(itemData);
     });
-    
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: invoice.customer ? 65 : 55,
-      theme: 'grid',
+      startY: y,
+      theme: 'striped',
+      headStyles: { fillColor: [44, 62, 80], textColor: [255, 255, 255], fontStyle: 'bold' },
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 4 },
+      columnStyles: {
+        0: { cellWidth: 24 },
+        1: { cellWidth: 160 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 36 },
+        4: { cellWidth: 48 },
+        5: { cellWidth: 48 },
+        6: { cellWidth: 64 },
+      },
+      margin: { left: 40, right: 40 },
     });
-    
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
-    
-    // Add totals
-    doc.text(`Subtotal: ₹${invoice.subtotal.toFixed(2)}`, 150, finalY, { align: 'right' });
-    doc.text(`Tax: ₹${invoice.taxTotal.toFixed(2)}`, 150, finalY + 5, { align: 'right' });
-    
+    let finalY = (doc as any).lastAutoTable.finalY + 16;
+    // Totals Section
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Summary', 40, finalY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    finalY += 14;
+    doc.text(`Subtotal: ₹${invoice.subtotal.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    const sgst = invoice.taxTotal / 2;
+    const cgst = invoice.taxTotal / 2;
+    doc.text(`SGST (${invoice.items.length > 0 ? (invoice.items[0].product.taxRate || 0) / 2 : 0}%): ₹${sgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    doc.text(`CGST (${invoice.items.length > 0 ? (invoice.items[0].product.taxRate || 0) / 2 : 0}%): ₹${cgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
     if (invoice.discountValue > 0) {
-      const discountAmount = invoice.discountType === 'percentage' 
-        ? (invoice.subtotal + invoice.taxTotal) * (invoice.discountValue / 100) 
+      const discountAmount = invoice.discountType === 'percentage'
+        ? (invoice.subtotal + invoice.taxTotal) * (invoice.discountValue / 100)
         : invoice.discountValue;
-      
-      doc.text(`Discount: -₹${discountAmount.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
-      doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY + 15, { align: 'right' });
-      doc.text(`Payment Method: ${invoice.paymentMethod.toUpperCase()}`, 150, finalY + 20, { align: 'right' });
-    } else {
-      doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY + 10, { align: 'right' });
-      doc.text(`Payment Method: ${invoice.paymentMethod.toUpperCase()}`, 150, finalY + 15, { align: 'right' });
+      doc.text(`Discount${invoice.discountType === 'percentage' ? ` (${invoice.discountValue}%)` : ''}: -₹${discountAmount.toFixed(2)}`, 40, finalY);
+      finalY += 14;
     }
-    
-    // Add thank you note
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 40, finalY);
+    finalY += 18;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text('Thank you for your business!', 105, finalY + 30, { align: 'center' });
-    
-    // Save the PDF
+    doc.text(`Amount in words: ${amountInWords(invoice.total)}`, 40, finalY);
+    finalY += 24;
+    doc.setDrawColor(200);
+    doc.line(40, finalY, pageWidth - 40, finalY);
+    finalY += 18;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(11);
+    doc.text('Thank you for your business!', pageWidth / 2, finalY, { align: 'center' });
+    finalY += 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('Terms & Conditions:', 40, finalY);
+    doc.text('1. Goods once sold will not be taken back or exchanged.', 40, finalY + 12);
+    doc.text('2. This is a computer generated invoice and does not require a signature.', 40, finalY + 24);
     doc.save(`invoice-${invoice.invoiceNumber}.pdf`);
   };
   
