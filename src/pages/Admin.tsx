@@ -24,6 +24,7 @@ const AdminPage = () => {
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [deleteInvoice, setDeleteInvoice] = useState<Invoice | null>(null);
   const [pendingEmployees, setPendingEmployees] = useState<any[]>([]);
+  const [approvedEmployees, setApprovedEmployees] = useState<any[]>([]);
   const { toast } = useToast();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -33,10 +34,12 @@ const AdminPage = () => {
   const [creatingUser, setCreatingUser] = useState(false);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
   const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
+  const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAll();
     fetchPendingEmployees();
+    fetchApprovedEmployees();
   }, [profile?.shop_id]);
 
   const fetchAll = async () => {
@@ -55,11 +58,18 @@ const AdminPage = () => {
     setPendingEmployees(data || []);
   };
 
+  const fetchApprovedEmployees = async () => {
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase.from('profiles').select('*').eq('status', 'approved').eq('shop_id', profile.shop_id);
+    setApprovedEmployees(data || []);
+  };
+
   const handleApprove = async (id: string) => {
     const { error } = await supabase.from('profiles').update({ status: 'approved' }).eq('id', id);
     if (!error) {
       toast({ title: 'Employee Approved', description: 'The employee has been approved.' });
       fetchPendingEmployees();
+      fetchApprovedEmployees();
     } else {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
@@ -70,6 +80,7 @@ const AdminPage = () => {
     if (!error) {
       toast({ title: 'Employee Rejected', description: 'The employee has been rejected.' });
       fetchPendingEmployees();
+      fetchApprovedEmployees();
     } else {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
@@ -156,14 +167,18 @@ const AdminPage = () => {
     setCreateUserError(null);
     setCreateUserSuccess(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const response = await fetch('http://localhost:3001/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           email: newUserEmail,
           password: newUserPassword,
           role: newUserRole,
-          shop_id: newUserShopId,
         }),
       });
       const result = await response.json();
@@ -176,6 +191,30 @@ const AdminPage = () => {
       setCreateUserError(err.message || 'Failed to create user');
     } finally {
       setCreatingUser(false);
+    }
+  };
+
+  // 1. Add handler for removing employee
+  const handleRemoveEmployee = async (id: string) => {
+    if (!window.confirm('Are you sure you want to remove this employee?')) return;
+    setRemovingEmployeeId(id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const response = await fetch('http://localhost:3001/remove-employee', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+    const result = await response.json();
+    setRemovingEmployeeId(null);
+    if (response.ok) {
+      fetchApprovedEmployees();
+      toast({ title: 'Employee Removed', description: 'The employee has been removed.' });
+    } else {
+      toast({ title: 'Error', description: result.error || 'Failed to remove employee', variant: 'destructive' });
     }
   };
 
@@ -435,6 +474,45 @@ const AdminPage = () => {
               )}
             </CardContent>
           </Card>
+          {/* Approved Employees Section */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Current Employees</CardTitle>
+              <CardDescription>All approved employees for this shop</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {approvedEmployees.length === 0 ? (
+                <div className="text-muted-foreground py-8 text-center">No current employees.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {approvedEmployees.map(emp => (
+                      <TableRow key={emp.id}>
+                        <TableCell>{emp.name || '-'}</TableCell>
+                        <TableCell>{emp.email}</TableCell>
+                        <TableCell>{emp.role}</TableCell>
+                        <TableCell>{emp.status}</TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="destructive" onClick={() => handleRemoveEmployee(emp.id)} disabled={removingEmployeeId === emp.id}>
+                            {removingEmployeeId === emp.id ? 'Removing...' : 'Remove'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
           <div className="mb-6">
             <Button onClick={() => setShowCreateUser(v => !v)}>{showCreateUser ? 'Hide' : 'Create New User'}</Button>
             {showCreateUser && (
@@ -446,10 +524,9 @@ const AdminPage = () => {
                   <option value="manager">Manager</option>
                   <option value="employee">Employee</option>
                 </select></label>
-                <label>Shop ID<input type="text" value={newUserShopId} onChange={e => setNewUserShopId(e.target.value)} required className="border p-2 rounded w-full" /></label>
                 <Button type="submit" disabled={creatingUser}>{creatingUser ? 'Creating...' : 'Create User'}</Button>
-                {createUserError && <div className="text-red-600">{createUserError}</div>}
-                {createUserSuccess && <div className="text-green-600">{createUserSuccess}</div>}
+                {createUserError && <div className="text-red-600 font-semibold mt-2">{createUserError}</div>}
+                {createUserSuccess && <div className="text-green-600 font-semibold mt-2">{createUserSuccess}</div>}
               </form>
             )}
           </div>
