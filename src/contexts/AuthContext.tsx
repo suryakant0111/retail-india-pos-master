@@ -1,194 +1,94 @@
 
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { User } from '@/types';
-import { mockUsers } from '@/data/mockData';
-import { useToast } from '@/components/ui/use-toast';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
-  user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  loginWithGoogle: () => Promise<void>;
-  logout: () => void;
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  isManager: boolean;
-  session: Session | null;
+  user: any;
+  profile: any;
+  loading: boolean;
+  accessDenied: boolean;
+  signIn: (email: string, password: string) => Promise<any>;
+  signUp: (email: string, password: string, role?: string) => Promise<any>;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  login: async () => false,
-  loginWithGoogle: async () => {},
-  logout: () => {},
-  isAuthenticated: false,
-  isAdmin: false,
-  isManager: false,
-  session: null,
-});
-
-export const useAuth = () => useContext(AuthContext);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, currentSession) => {
-        setSession(currentSession);
-        if (currentSession?.user) {
-          // For demo, we're still using mockUsers, but in a real app
-          // you would fetch user data from Supabase
-          const foundUser = mockUsers.find(u => u.email.toLowerCase() === currentSession.user.email);
-          if (foundUser) {
-            setUser(foundUser);
-            localStorage.setItem('pos_user', JSON.stringify(foundUser));
-          }
-        } else {
-          setUser(null);
-          localStorage.removeItem('pos_user');
-        }
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      if (currentSession?.user) {
-        const savedUser = localStorage.getItem('pos_user');
-        if (savedUser) {
-          try {
-            setUser(JSON.parse(savedUser));
-          } catch (e) {
-            console.error('Failed to parse saved user:', e);
-          }
-        } else {
-          // If no saved user, try to find user in mockUsers by email
-          const foundUser = mockUsers.find(u => u.email.toLowerCase() === currentSession.user.email);
-          if (foundUser) {
-            setUser(foundUser);
-            localStorage.setItem('pos_user', JSON.stringify(foundUser));
-          }
-        }
-      }
-      setIsLoading(false);
+    const session = supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      if (data.session?.user) fetchProfile(data.session.user.id);
+      setLoading(false);
     });
-
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchProfile(session.user.id);
+      else setProfile(null);
+    });
     return () => {
-      subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // For demo purposes, we're using mock data and not validating password
-    // In a real app, this would be an API call
-    try {
-      setIsLoading(true);
-      
-      // Attempt to login with Supabase
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (error) {
-        // Fallback to mock users for demo
-        const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-        
-        if (foundUser) {
-          setUser(foundUser);
-          localStorage.setItem('pos_user', JSON.stringify(foundUser));
-          toast({
-            title: "Login successful",
-            description: `Welcome back, ${foundUser.name}!`,
-            variant: "default",
-          });
-          return true;
-        } else {
-          toast({
-            title: "Login failed",
-            description: "Invalid email or password",
-            variant: "destructive",
-          });
-          return false;
-        }
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (!error) {
+      setProfile(data);
+      if (data && data.status && data.status !== 'approved') {
+        setAccessDenied(true);
+      } else {
+        setAccessDenied(false);
       }
-      
-      // Successful Supabase login
-      return true;
-    } catch (error) {
-      console.error('Login error:', error);
-      toast({
-        title: "Login error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
-      return false;
-    } finally {
-      setIsLoading(false);
+    } else {
+      setProfile(null);
+      setAccessDenied(false);
     }
   };
 
-  const loginWithGoogle = async (): Promise<void> => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`
-        }
-      });
-      
-      if (error) {
-        console.error('Google login error:', error);
-        toast({
-          title: "Google login failed",
-          description: error.message,
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Google login error:', error);
-      toast({
-        title: "Login error",
-        description: "An unexpected error occurred with Google login",
-        variant: "destructive",
-      });
-    }
+  const signIn = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (data.user) fetchProfile(data.user.id);
+    return { data, error };
   };
 
-  const logout = async () => {
+  const signUp = async (email: string, password: string, role: string = 'shopkeeper') => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (data.user) {
+      // Insert profile with role
+      await supabase.from('profiles').insert({ id: data.user.id, email, role });
+      fetchProfile(data.user.id);
+    }
+    return { data, error };
+  };
+
+  const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('pos_user');
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out",
-    });
+    setProfile(null);
   };
 
-  const isAuthenticated = !!user;
-  const isAdmin = isAuthenticated && user?.role === 'admin';
-  const isManager = isAuthenticated && (user?.role === 'manager' || user?.role === 'admin');
+  return (
+    <AuthContext.Provider value={{ user, profile, loading, accessDenied, signIn, signUp, signOut }}>
+      {accessDenied ? (
+        <div className="flex flex-col items-center justify-center min-h-screen text-center">
+          <h2 className="text-2xl font-bold mb-2">Account Pending Approval</h2>
+          <p className="text-muted-foreground mb-4">Your account is not yet approved by an admin. Please contact your administrator.</p>
+        </div>
+      ) : (
+        children
+      )}
+    </AuthContext.Provider>
+  );
+};
 
-  const value = {
-    user,
-    login,
-    loginWithGoogle,
-    logout,
-    isAuthenticated,
-    isAdmin,
-    isManager,
-    session,
-  };
-
-  if (isLoading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
-  }
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 };

@@ -20,6 +20,8 @@ import NotFound from "./pages/NotFound";
 import Transactions from "./pages/Transactions";
 import Invoices from "./pages/Invoices";
 import AdminPage from "./pages/Admin";
+import ShopPage from "./pages/Shop";
+import SignupPage from "./pages/Signup";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +36,7 @@ const App = () => (
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignupPage />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               
               {/* Cashier routes */}
@@ -45,16 +48,17 @@ const App = () => (
               
               {/* Manager routes */}
               <Route element={<AuthGuard requireManager={true} />}>
-                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/invoices" element={<Invoices />} />
               </Route>
               
               {/* Admin routes */}
               <Route element={<AuthGuard requireAdmin={true} />}>
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/admin" element={<AdminPage />} />
+                <Route path="/shop" element={<ShopPage />} />
               </Route>
               
               {/* Catch-all route */}

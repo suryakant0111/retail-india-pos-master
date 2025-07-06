@@ -1,197 +1,204 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Product, Customer, Invoice } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Edit, Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { mockProducts, mockCustomers, mockInvoices } from '@/data/mockData';
-import { Search, Plus, BarChart4, Trash2, Edit, Package, Users, FileText, Barcode } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
-import { useForm } from 'react-hook-form';
-import { Product } from '@/types';
+import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
-const AdminPage: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showAddProductDialog, setShowAddProductDialog] = useState(false);
-  const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false);
-  const [products, setProducts] = useState(mockProducts);
-  const [customers, setCustomers] = useState(mockCustomers);
+const AdminPage = () => {
+  const { profile } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [deleteInvoice, setDeleteInvoice] = useState<Invoice | null>(null);
+  const [pendingEmployees, setPendingEmployees] = useState<any[]>([]);
   const { toast } = useToast();
-  
-  // Filter products based on search term
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  
-  // Filter customers based on search term
-  const filteredCustomers = mockCustomers.filter(customer => 
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
-  
-  // Filter invoices based on search term
-  const filteredInvoices = mockInvoices.filter(invoice => 
-    invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (invoice.customer && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-  
-  const handleAddNew = (type: string) => {
-    if (type === 'Product') {
-      setShowAddProductDialog(true);
-    } else if (type === 'Customer') {
-      setShowAddCustomerDialog(true);
-    } else {
-      toast({
-        title: `Add New ${type}`,
-        description: `This would open a form to add a new ${type.toLowerCase()}`,
-        variant: "default",
-      });
-    }
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('employee');
+  const [newUserShopId, setNewUserShopId] = useState(profile?.shop_id || '');
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAll();
+    fetchPendingEmployees();
+  }, [profile?.shop_id]);
+
+  const fetchAll = async () => {
+    if (!profile?.shop_id) return;
+    const { data: productsData } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+    const { data: customersData } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
+    const { data: invoicesData } = await supabase.from('invoices').select('*').eq('shop_id', profile.shop_id);
+    setProducts(productsData || []);
+    setCustomers(customersData || []);
+    setInvoices(invoicesData || []);
   };
-  
-  const handleEdit = (id: string, type: string) => {
-    toast({
-      title: `Edit ${type}`,
-      description: `This would open a form to edit ${type.toLowerCase()} with ID: ${id}`,
-      variant: "default",
-    });
+
+  const fetchPendingEmployees = async () => {
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase.from('profiles').select('*').eq('status', 'pending').eq('shop_id', profile.shop_id);
+    setPendingEmployees(data || []);
   };
-  
-  const handleDelete = (id: string, type: string) => {
-    if (type === 'Product') {
-      setProducts(products.filter(product => product.id !== id));
-      toast({
-        title: `Delete ${type}`,
-        description: `Product has been removed from the database.`,
-        variant: "destructive",
-      });
+
+  const handleApprove = async (id: string) => {
+    const { error } = await supabase.from('profiles').update({ status: 'approved' }).eq('id', id);
+    if (!error) {
+      toast({ title: 'Employee Approved', description: 'The employee has been approved.' });
+      fetchPendingEmployees();
     } else {
-      toast({
-        title: `Delete ${type}`,
-        description: `This action would remove this ${type.toLowerCase()} from the database.`,
-        variant: "destructive",
-      });
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
   };
 
-  const handleAddProductSubmit = (data: any) => {
-    const newProduct: Product = {
-      id: `PRD${Date.now().toString().slice(-6)}`,
-      name: data.name,
-      description: data.description || `Description for ${data.name}`,
-      category: data.category,
-      price: parseFloat(data.price),
-      tax: 18, // Default tax percentage
-      stock: parseInt(data.stock),
-      barcode: data.barcode || "",
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    setProducts([...products, newProduct]);
-    
-    // Update localStorage to persist the new product
+  const handleReject = async (id: string) => {
+    const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', id);
+    if (!error) {
+      toast({ title: 'Employee Rejected', description: 'The employee has been rejected.' });
+      fetchPendingEmployees();
+    } else {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  // --- Product Edit/Delete ---
+  const handleProductEditSave = async () => {
+    if (!editProduct) return;
+    const { id, ...fields } = editProduct;
+    const { error } = await supabase.from('products').update(fields).eq('id', id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Product Updated', description: 'Product updated successfully.' });
+      setEditProduct(null);
+      fetchAll();
+    }
+  };
+  const handleProductDelete = async () => {
+    if (!deleteProduct) return;
+    const { error } = await supabase.from('products').delete().eq('id', deleteProduct.id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Product Deleted', description: 'Product deleted successfully.' });
+      setDeleteProduct(null);
+      fetchAll();
+    }
+  };
+
+  // --- Customer Edit/Delete ---
+  const handleCustomerEditSave = async () => {
+    if (!editCustomer) return;
+    const { id, ...fields } = editCustomer;
+    const { error } = await supabase.from('customers').update(fields).eq('id', id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Customer Updated', description: 'Customer updated successfully.' });
+      setEditCustomer(null);
+      fetchAll();
+    }
+  };
+  const handleCustomerDelete = async () => {
+    if (!deleteCustomer) return;
+    const { error } = await supabase.from('customers').delete().eq('id', deleteCustomer.id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Customer Deleted', description: 'Customer deleted successfully.' });
+      setDeleteCustomer(null);
+      fetchAll();
+    }
+  };
+
+  // --- Invoice Edit/Delete ---
+  const handleInvoiceEditSave = async () => {
+    if (!editInvoice) return;
+    const { id, ...fields } = editInvoice;
+    const { error } = await supabase.from('invoices').update(fields).eq('id', id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Invoice Updated', description: 'Invoice updated successfully.' });
+      setEditInvoice(null);
+      fetchAll();
+    }
+  };
+  const handleInvoiceDelete = async () => {
+    if (!deleteInvoice) return;
+    const { error } = await supabase.from('invoices').delete().eq('id', deleteInvoice.id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Invoice Deleted', description: 'Invoice deleted successfully.' });
+      setDeleteInvoice(null);
+      fetchAll();
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingUser(true);
+    setCreateUserError(null);
+    setCreateUserSuccess(null);
     try {
-      const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      localStorage.setItem('products', JSON.stringify([...existingProducts, newProduct]));
-    } catch (error) {
-      console.error('Error saving product to localStorage:', error);
+      const response = await fetch('http://localhost:3001/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+          shop_id: newUserShopId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to create user');
+      setCreateUserSuccess('User created successfully!');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserRole('employee');
+    } catch (err: any) {
+      setCreateUserError(err.message || 'Failed to create user');
+    } finally {
+      setCreatingUser(false);
     }
-    
-    toast({
-      title: "Product Added",
-      description: `The product ${data.name} has been added successfully.`,
-      variant: "default",
-    });
-    setShowAddProductDialog(false);
-    productForm.reset();
   };
-
-  const handleAddCustomerSubmit = (data: any) => {
-    toast({
-      title: "Customer Added",
-      description: `The customer ${data.name} has been added successfully.`,
-      variant: "default",
-    });
-    setShowAddCustomerDialog(false);
-  };
-
-  // Form for adding a new product
-  const productForm = useForm({
-    defaultValues: {
-      name: '',
-      category: '',
-      price: '',
-      stock: '',
-      description: '',
-      barcode: ''
-    }
-  });
-
-  // Form for adding a new customer
-  const customerForm = useForm({
-    defaultValues: {
-      name: '',
-      phone: '',
-      email: ''
-    }
-  });
 
   return (
-    <div className="p-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Manage your products, customers, and orders</p>
-        </div>
-        <div className="flex items-center gap-2 mt-4 md:mt-0">
-          <BarChart4 className="h-5 w-5 text-muted-foreground" />
-          <span className="text-muted-foreground">Sales this month: ₹155,000</span>
-        </div>
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
+      <div className="mb-4 flex justify-end">
+        <Link to="/shop">
+          <Button variant="secondary">View Shop Details</Button>
+        </Link>
       </div>
-
       <Tabs defaultValue="products" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="products" className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Products
-          </TabsTrigger>
-          <TabsTrigger value="customers" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Customers
-          </TabsTrigger>
-          <TabsTrigger value="orders" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Orders
-          </TabsTrigger>
+          <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
+          <TabsTrigger value="employees">Employees</TabsTrigger>
         </TabsList>
-
-        {/* Products Tab */}
         <TabsContent value="products">
           <Card>
-            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between space-y-2 md:space-y-0">
-              <div>
-                <CardTitle>Products</CardTitle>
-                <CardDescription>Manage your inventory and products</CardDescription>
-              </div>
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search products..."
-                    className="pl-8 w-full md:w-auto"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <Button onClick={() => handleAddNew('Product')}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Product
-                </Button>
-              </div>
+            <CardHeader>
+              <CardTitle>Products</CardTitle>
+              <CardDescription>Manage your inventory and products</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -206,21 +213,17 @@ const AdminPage: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProducts.map((product) => (
+                  {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.category}</TableCell>
                       <TableCell>{product.barcode || '-'}</TableCell>
-                      <TableCell className="text-right">₹{product.price.toLocaleString('en-IN')}</TableCell>
+                      <TableCell className="text-right">₹{product.price}</TableCell>
                       <TableCell className="text-right">{product.stock}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(product.id, 'Product')}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id, 'Product')}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setEditProduct(product)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteProduct(product)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -229,30 +232,42 @@ const AdminPage: React.FC = () => {
               </Table>
             </CardContent>
           </Card>
+          {/* Edit Product Dialog */}
+          <Dialog open={!!editProduct} onOpenChange={open => !open && setEditProduct(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Edit Product</DialogTitle></DialogHeader>
+              {editProduct && (
+                <div className="space-y-2">
+                  <Input value={editProduct.name} onChange={e => setEditProduct({ ...editProduct, name: e.target.value })} placeholder="Name" />
+                  <Input value={editProduct.category} onChange={e => setEditProduct({ ...editProduct, category: e.target.value })} placeholder="Category" />
+                  <Input value={editProduct.barcode || ''} onChange={e => setEditProduct({ ...editProduct, barcode: e.target.value })} placeholder="Barcode" />
+                  <Input type="number" value={editProduct.price} onChange={e => setEditProduct({ ...editProduct, price: Number(e.target.value) })} placeholder="Price" />
+                  <Input type="number" value={editProduct.stock} onChange={e => setEditProduct({ ...editProduct, stock: Number(e.target.value) })} placeholder="Stock" />
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditProduct(null)}>Cancel</Button>
+                <Button onClick={handleProductEditSave}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {/* Delete Product Dialog */}
+          <Dialog open={!!deleteProduct} onOpenChange={open => !open && setDeleteProduct(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Delete Product</DialogTitle></DialogHeader>
+              <p>Are you sure you want to delete <b>{deleteProduct?.name}</b>?</p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteProduct(null)}>Cancel</Button>
+                <Button variant="destructive" onClick={handleProductDelete}>Delete</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
-
-        {/* Customers Tab */}
         <TabsContent value="customers">
           <Card>
-            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between space-y-2 md:space-y-0">
-              <div>
-                <CardTitle>Customers</CardTitle>
-                <CardDescription>Manage your customer database</CardDescription>
-              </div>
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search customers..."
-                    className="pl-8 w-full md:w-auto"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <Button onClick={() => handleAddNew('Customer')}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Customer
-                </Button>
-              </div>
+            <CardHeader>
+              <CardTitle>Customers</CardTitle>
+              <CardDescription>Manage your customer database</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -266,7 +281,7 @@ const AdminPage: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCustomers.map((customer) => (
+                  {customers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell>{customer.phone}</TableCell>
@@ -274,12 +289,8 @@ const AdminPage: React.FC = () => {
                       <TableCell className="text-right">{customer.loyaltyPoints || 0}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(customer.id, 'Customer')}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(customer.id, 'Customer')}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setEditCustomer(customer)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteCustomer(customer)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -288,25 +299,41 @@ const AdminPage: React.FC = () => {
               </Table>
             </CardContent>
           </Card>
+          {/* Edit Customer Dialog */}
+          <Dialog open={!!editCustomer} onOpenChange={open => !open && setEditCustomer(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Edit Customer</DialogTitle></DialogHeader>
+              {editCustomer && (
+                <div className="space-y-2">
+                  <Input value={editCustomer.name} onChange={e => setEditCustomer({ ...editCustomer, name: e.target.value })} placeholder="Name" />
+                  <Input value={editCustomer.phone} onChange={e => setEditCustomer({ ...editCustomer, phone: e.target.value })} placeholder="Phone" />
+                  <Input value={editCustomer.email || ''} onChange={e => setEditCustomer({ ...editCustomer, email: e.target.value })} placeholder="Email" />
+                  <Input value={editCustomer.address || ''} onChange={e => setEditCustomer({ ...editCustomer, address: e.target.value })} placeholder="Address" />
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditCustomer(null)}>Cancel</Button>
+                <Button onClick={handleCustomerEditSave}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {/* Delete Customer Dialog */}
+          <Dialog open={!!deleteCustomer} onOpenChange={open => !open && setDeleteCustomer(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Delete Customer</DialogTitle></DialogHeader>
+              <p>Are you sure you want to delete <b>{deleteCustomer?.name}</b>?</p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteCustomer(null)}>Cancel</Button>
+                <Button variant="destructive" onClick={handleCustomerDelete}>Delete</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
-
-        {/* Orders Tab */}
-        <TabsContent value="orders">
+        <TabsContent value="invoices">
           <Card>
-            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between space-y-2 md:space-y-0">
-              <div>
-                <CardTitle>Orders</CardTitle>
-                <CardDescription>View and manage order history</CardDescription>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search orders..."
-                  className="pl-8 w-full md:w-auto"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+            <CardHeader>
+              <CardTitle>Invoices</CardTitle>
+              <CardDescription>View and manage order history</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -321,26 +348,17 @@ const AdminPage: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredInvoices.map((invoice) => (
+                  {invoices.map((invoice) => (
                     <TableRow key={invoice.id}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                       <TableCell>{invoice.customer ? invoice.customer.name : 'Walk-in Customer'}</TableCell>
-                      <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right">₹{invoice.total.toLocaleString('en-IN', {maximumFractionDigits: 2})}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          invoice.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 
-                          invoice.paymentStatus === 'partial' ? 'bg-amber-100 text-amber-800' : 
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)}
-                        </span>
-                      </TableCell>
+                      <TableCell>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell className="text-right">₹{invoice.total}</TableCell>
+                      <TableCell className="text-right">{invoice.paymentStatus}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(invoice.id, 'Order')}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setEditInvoice(invoice)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteInvoice(invoice)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -349,169 +367,94 @@ const AdminPage: React.FC = () => {
               </Table>
             </CardContent>
           </Card>
+          {/* Edit Invoice Dialog */}
+          <Dialog open={!!editInvoice} onOpenChange={open => !open && setEditInvoice(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Edit Invoice</DialogTitle></DialogHeader>
+              {editInvoice && (
+                <div className="space-y-2">
+                  <Input value={editInvoice.invoiceNumber} onChange={e => setEditInvoice({ ...editInvoice, invoiceNumber: e.target.value })} placeholder="Invoice #" />
+                  <Input value={editInvoice.paymentStatus} onChange={e => setEditInvoice({ ...editInvoice, paymentStatus: e.target.value as Invoice["paymentStatus"] })} placeholder="Status" />
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditInvoice(null)}>Cancel</Button>
+                <Button onClick={handleInvoiceEditSave}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {/* Delete Invoice Dialog */}
+          <Dialog open={!!deleteInvoice} onOpenChange={open => !open && setDeleteInvoice(null)}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Delete Invoice</DialogTitle></DialogHeader>
+              <p>Are you sure you want to delete invoice <b>{deleteInvoice?.invoiceNumber}</b>?</p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteInvoice(null)}>Cancel</Button>
+                <Button variant="destructive" onClick={handleInvoiceDelete}>Delete</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+        <TabsContent value="employees">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Employees</CardTitle>
+              <CardDescription>Approve or reject new employee accounts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {pendingEmployees.length === 0 ? (
+                <div className="text-muted-foreground py-8 text-center">No pending employees.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingEmployees.map(emp => (
+                      <TableRow key={emp.id}>
+                        <TableCell>{emp.name || '-'}</TableCell>
+                        <TableCell>{emp.email}</TableCell>
+                        <TableCell>{emp.role}</TableCell>
+                        <TableCell>{emp.status}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleApprove(emp.id)}>Approve</Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleReject(emp.id)}>Reject</Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+          <div className="mb-6">
+            <Button onClick={() => setShowCreateUser(v => !v)}>{showCreateUser ? 'Hide' : 'Create New User'}</Button>
+            {showCreateUser && (
+              <form onSubmit={handleCreateUser} className="mt-4 flex flex-col gap-2 max-w-md p-4 border rounded">
+                <label>Email<input type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} required className="border p-2 rounded w-full" /></label>
+                <label>Password<input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} required className="border p-2 rounded w-full" /></label>
+                <label>Role<select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="border p-2 rounded w-full">
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="employee">Employee</option>
+                </select></label>
+                <label>Shop ID<input type="text" value={newUserShopId} onChange={e => setNewUserShopId(e.target.value)} required className="border p-2 rounded w-full" /></label>
+                <Button type="submit" disabled={creatingUser}>{creatingUser ? 'Creating...' : 'Create User'}</Button>
+                {createUserError && <div className="text-red-600">{createUserError}</div>}
+                {createUserSuccess && <div className="text-green-600">{createUserSuccess}</div>}
+              </form>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
-
-      {/* Add Product Dialog */}
-      <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Product</DialogTitle>
-            <DialogDescription>
-              Fill out the form below to add a new product to inventory.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...productForm}>
-            <form onSubmit={productForm.handleSubmit(handleAddProductSubmit)} className="space-y-4">
-              <FormField
-                control={productForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Product Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter product name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={productForm.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter category" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={productForm.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter product description" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={productForm.control}
-                name="barcode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Barcode</FormLabel>
-                    <FormControl>
-                      <div className="flex gap-2">
-                        <Input placeholder="Enter product barcode" {...field} />
-                        <Button type="button" variant="outline" size="icon" title="Generate Random Barcode" 
-                          onClick={() => {
-                            const randomBarcode = Math.floor(10000000000000 + Math.random() * 90000000000000).toString();
-                            field.onChange(randomBarcode);
-                          }}>
-                          <Barcode className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={productForm.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Price (₹)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="Enter price" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={productForm.control}
-                name="stock"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Stock</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="Enter stock quantity" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="submit">Add Product</Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Customer Dialog */}
-      <Dialog open={showAddCustomerDialog} onOpenChange={setShowAddCustomerDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Customer</DialogTitle>
-          </DialogHeader>
-          <Form {...customerForm}>
-            <form onSubmit={customerForm.handleSubmit(handleAddCustomerSubmit)} className="space-y-4">
-              <FormField
-                control={customerForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Customer Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter customer name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={customerForm.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter phone number" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={customerForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email (Optional)</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="Enter email address" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="submit">Add Customer</Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

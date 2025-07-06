@@ -11,34 +11,32 @@ import { useToast } from '@/components/ui/use-toast';
 import { Invoice } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { supabase } from '@/integrations/supabase/client';
+import { useProfile } from '@/hooks/useProfile';
 
 const Invoices = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { profile } = useProfile();
+
+  const fetchInvoices = async () => {
+    setLoading(true);
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase.from('invoices').select('*').eq('shop_id', profile.shop_id);
+    if (error) {
+      console.error('Error fetching invoices:', error);
+    } else if (data) {
+      setInvoices(data.map(inv => ({ ...inv, createdAt: new Date(inv.createdAt) })));
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    // Load invoices from localStorage
-    try {
-      const storedInvoices = localStorage.getItem('invoices');
-      if (storedInvoices) {
-        const parsedInvoices = JSON.parse(storedInvoices);
-        // Convert string dates back to Date objects
-        const processedInvoices = parsedInvoices.map((invoice: any) => ({
-          ...invoice,
-          createdAt: new Date(invoice.createdAt)
-        }));
-        
-        setInvoices([...mockInvoices, ...processedInvoices]);
-      } else {
-        setInvoices([...mockInvoices]);
-      }
-    } catch (error) {
-      console.error('Error loading invoices:', error);
-      setInvoices([...mockInvoices]);
-    }
-  }, []);
+    fetchInvoices();
+  }, [profile?.shop_id]);
   
   // Filter invoices based on search term and status
   const filteredInvoices = invoices.filter(invoice => {
@@ -156,6 +154,9 @@ const Invoices = () => {
               <CardTitle>Invoice History</CardTitle>
               <CardDescription>View and download invoice records</CardDescription>
             </div>
+            <Button onClick={fetchInvoices} disabled={loading} variant="outline">
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
             <div className="flex flex-col md:flex-row gap-4 mt-4 md:mt-0">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

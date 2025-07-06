@@ -11,15 +11,21 @@ import { CustomerSelection } from './CustomerSelection';
 import { NewCustomerDialog } from './NewCustomerDialog';
 import { OrderSummary } from './OrderSummary';
 import { PaymentButtons } from './PaymentButtons';
+import { supabase } from '@/integrations/supabase/client';
+import { Product } from '@/types';
 
 interface CartSectionProps {
   customers: Customer[];
   openPaymentDialog: (method: 'cash' | 'upi' | 'card') => void;
+  refreshCustomers: () => Promise<void>;
+  products?: Product[];
 }
 
 export const CartSection: React.FC<CartSectionProps> = ({
   customers,
-  openPaymentDialog
+  openPaymentDialog,
+  refreshCustomers,
+  products = []
 }) => {
   const { 
     items, 
@@ -52,48 +58,56 @@ export const CartSection: React.FC<CartSectionProps> = ({
     setDiscount(value, discountTypeInput);
   };
   
-  const handleAddNewCustomer = () => {
+  const handleAddNewCustomer = async () => {
     if (!newCustomer.name || !newCustomer.phone) {
       return;
     }
-    
-    const newCustomerId = `CUST${Date.now().toString().slice(-6)}`;
-    
-    const customerToAdd: Customer = {
-      id: newCustomerId,
-      name: newCustomer.name,
-      phone: newCustomer.phone,
-      email: newCustomer.email || undefined,
-      address: newCustomer.address || undefined,
-      loyaltyPoints: 0,
-      totalPurchases: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    // Store to localStorage immediately when adding new customer
-    try {
-      const storedCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
-      const updatedCustomers = [...storedCustomers, customerToAdd];
-      localStorage.setItem('customers', JSON.stringify(updatedCustomers));
-    } catch (error) {
-      console.error('Error saving customer to localStorage:', error);
+
+    // Check for existing customer by phone or email
+    const { data: existing, error } = await supabase
+      .from('customers')
+      .select('*')
+      .or(`phone.eq.${newCustomer.phone},email.eq.${newCustomer.email || ''}`);
+    if (existing && existing.length > 0) {
+      toast({
+        title: 'Customer Exists',
+        description: 'A customer with this phone or email already exists.',
+        variant: 'destructive',
+      });
+      return;
     }
-    
-    setCustomer(customerToAdd);
-    setNewCustomerDialog(false);
-    setNewCustomer({
-      name: '',
-      phone: '',
-      email: '',
-      address: '',
-    });
-    
-    toast({
-      title: "Customer Added",
-      description: `${customerToAdd.name} has been added as a new customer`,
-      variant: "success",
-    });
+
+    // Insert new customer
+    const { data, error: insertError } = await supabase.from('customers').insert([
+      {
+        name: newCustomer.name,
+        phone: newCustomer.phone,
+        email: newCustomer.email || null,
+        address: newCustomer.address || null,
+        loyaltyPoints: 0,
+        totalPurchases: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    ]).select();
+    if (insertError) {
+      toast({
+        title: 'Error',
+        description: insertError.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (data && data[0]) {
+      setCustomer(data[0]);
+      setNewCustomerDialog(false);
+      setNewCustomer({ name: '', phone: '', email: '', address: '' });
+      toast({
+        title: 'Customer Added',
+        description: `${data[0].name} has been added as a new customer`,
+        variant: 'success',
+      });
+    }
   };
   
   return (
@@ -121,6 +135,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
           newCustomer={newCustomer}
           setNewCustomer={setNewCustomer}
           onAddCustomer={handleAddNewCustomer}
+          refreshCustomers={refreshCustomers}
         />
       </div>
       
@@ -129,15 +144,19 @@ export const CartSection: React.FC<CartSectionProps> = ({
           <EmptyCart />
         ) : (
           <div className="space-y-4">
-            {items.map((item, index) => (
-              <CartItemCard 
-                key={index} 
-                item={item} 
-                index={index} 
-                onRemove={() => removeItem(index)}
-                onUpdateQuantity={(qty) => updateQuantity(index, qty)}
-              />
-            ))}
+            {items.map((item, index) => {
+              // Find the latest product info by ID
+              const latestProduct = products.find(p => p.id === item.product.id) || item.product;
+              return (
+                <CartItemCard 
+                  key={index} 
+                  item={{ ...item, product: latestProduct }}
+                  index={index} 
+                  onRemove={() => removeItem(index)}
+                  onUpdateQuantity={(qty) => updateQuantity(index, qty)}
+                />
+              );
+            })}
           </div>
         )}
       </div>

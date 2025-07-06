@@ -7,10 +7,13 @@ import { ReceiptDialog } from '@/components/pos/ReceiptDialog';
 import { QuickProductBar } from '@/components/pos/QuickProductBar';
 import { DailySalesSummary } from '@/components/pos/DailySalesSummary';
 import { useCart } from '@/contexts/CartContext';
-import { mockProducts, mockCustomers } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { mockCustomers } from '@/data/mockData';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { Customer } from '@/types';
+import { useProfile } from '@/hooks/useProfile';
 
 const POS = () => {
   const { 
@@ -25,7 +28,6 @@ const POS = () => {
     addItem
   } = useCart();
   
-  const { isManager } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('all');
@@ -35,22 +37,40 @@ const POS = () => {
   const [showReceiptDialog, setShowReceiptDialog] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [invoiceReference, setInvoiceReference] = useState('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const { profile } = useProfile();
   
-  useEffect(() => {
-    try {
-      const storedProducts = localStorage.getItem('products');
-      if (storedProducts) {
-        const parsedProducts = JSON.parse(storedProducts);
-        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
-          setProducts([...mockProducts, ...parsedProducts]);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading products from localStorage:', error);
+  const fetchProducts = async () => {
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+    if (error) {
+      console.error('Error fetching products:', error);
+    } else if (data) {
+      setProducts(data);
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    async function fetchCustomers() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
+      if (error) {
+        console.error('Error fetching customers:', error);
+      } else if (data) {
+        setCustomers(data);
+      }
+    }
+    fetchCustomers();
+  }, [profile?.shop_id]);
+
+  const refreshCustomers = async () => {
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
+    if (!error && data) setCustomers(data);
+  };
   
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
   
@@ -90,41 +110,6 @@ const POS = () => {
     }
   };
   
-  const updateInventory = () => {
-    try {
-      const allStoredProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      const mockProductIds = mockProducts.map(p => p.id);
-      
-      const updatedProducts = allStoredProducts.map((product: Product) => {
-        const soldItem = items.find(item => item.product.id === product.id);
-        if (soldItem) {
-          return {
-            ...product,
-            stock: Math.max(0, product.stock - soldItem.quantity)
-          };
-        }
-        return product;
-      });
-      
-      const updatedMockProducts = mockProducts.map(product => {
-        const soldItem = items.find(item => item.product.id === product.id);
-        if (soldItem) {
-          return {
-            ...product,
-            stock: Math.max(0, product.stock - soldItem.quantity)
-          };
-        }
-        return product;
-      });
-      
-      localStorage.setItem('products', JSON.stringify(updatedProducts));
-      
-      setProducts([...updatedMockProducts, ...updatedProducts]);
-    } catch (error) {
-      console.error('Error updating inventory:', error);
-    }
-  };
-  
   const updateCustomerPurchases = () => {
     if (!customer) return;
     
@@ -158,7 +143,7 @@ const POS = () => {
     }
   };
   
-  const finalizeTransaction = () => {
+  const finalizeTransaction = async () => {
     const businessSettings = JSON.parse(localStorage.getItem('businessSettings') || '{}');
     const paymentSettings = JSON.parse(localStorage.getItem('paymentSettings') || '{}');
     
@@ -176,11 +161,23 @@ const POS = () => {
         paymentMethod: paymentMethod,
         paymentStatus: 'paid',
         createdBy: 'admin',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
         businessDetails: businessSettings,
-        paymentDetails: paymentSettings
+        paymentDetails: paymentSettings,
+        shop_id: profile?.shop_id || null // Add shop_id to invoice
       };
       
+      // Insert invoice into Supabase
+      const { error: invoiceInsertError } = await supabase.from('invoices').insert([newInvoice]);
+      if (invoiceInsertError) {
+        console.error('Error inserting invoice:', invoiceInsertError, newInvoice);
+        toast({
+          title: 'Invoice Error',
+          description: invoiceInsertError.message,
+          variant: 'destructive',
+        });
+      }
+
       const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
       const updatedInvoices = [...storedInvoices, newInvoice];
       localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
@@ -193,20 +190,31 @@ const POS = () => {
         paymentMethod: paymentMethod,
         customer: customer ? customer.name : 'Walk-in Customer',
         createdAt: new Date(),
+        shop_id: profile?.shop_id || null, // Add shop_id to transaction
       };
       
       const storedTransactions = JSON.parse(localStorage.getItem('transactions') || '[]');
       localStorage.setItem('transactions', JSON.stringify([...storedTransactions, newTransaction]));
       
-      updateInventory();
-      
       updateCustomerPurchases();
-      
+
+      // Update product stock in Supabase
+      for (const item of items) {
+        const productId = item.product.id;
+        const soldQty = item.quantity;
+        const currentStock = item.product.stock;
+        const newStock = Math.max(0, currentStock - soldQty);
+        await supabase.from('products').update({ stock: newStock }).eq('id', productId);
+      }
+
+      await fetchProducts();
+
       toast({
         title: "Payment Successful",
         description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()}`,
         variant: "success",
       });
+      window.dispatchEvent(new Event('transactionAdded'));
     } catch (error) {
       console.error('Error saving invoice:', error);
     }
@@ -253,7 +261,7 @@ const POS = () => {
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)]">
       <div className="lg:w-2/3 p-4 overflow-auto">
-        {isManager && <DailySalesSummary />}
+        <DailySalesSummary />
         
         <div className="mb-4">
           <ProductSearch 
@@ -279,8 +287,10 @@ const POS = () => {
       </div>
       
       <CartSection 
-        customers={mockCustomers}
+        customers={customers}
         openPaymentDialog={openPaymentDialog}
+        refreshCustomers={refreshCustomers}
+        products={products}
       />
       
       <PaymentDialog

@@ -10,6 +10,7 @@ export interface Customer {
   totalPurchases?: number;
   createdAt: Date;
   updatedAt: Date;
+  shop_id?: string;
 }
 
 export interface ProductVariant {
@@ -44,10 +45,12 @@ export interface Product {
   minStock?: number; // Add minStock property
   barcode?: string;
   image?: string;    // Add image property
+  image_url?: string; // Add image_url property for Cloudinary
   isActive: boolean;
   variants?: ProductVariant[]; // Add variants property
   createdAt: Date;
   updatedAt: Date;
+  shop_id?: string;
 }
 
 export interface User {
@@ -74,6 +77,7 @@ export interface Invoice {
   createdAt: Date;
   businessDetails: any;
   paymentDetails: any;
+  shop_id?: string;
 }
 
 export interface SalesSummary {

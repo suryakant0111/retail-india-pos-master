@@ -5,36 +5,60 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product } from '@/types';
-import { mockProducts } from '@/data/mockData';
-import { PlusCircle, Search, Filter, Image, Upload, Barcode } from 'lucide-react';
+import { supabase } from "../integrations/supabase/client";
+import { PlusCircle, Search, Filter, Image, Upload, Barcode, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { useProfile } from '@/hooks/useProfile';
 
 const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState<string>('all');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [productImage, setProductImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { profile } = useProfile();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const productRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   
+  // Fetch products from Supabase on mount or when shop_id changes
   useEffect(() => {
-    // Try to load products from localStorage
-    try {
-      const storedProducts = localStorage.getItem('products');
-      if (storedProducts) {
-        const parsedProducts = JSON.parse(storedProducts);
-        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
-          setProducts([...mockProducts, ...parsedProducts]);
-        }
+    async function fetchProducts() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+      if (error) {
+        console.error('Error fetching products:', error);
+      } else if (data) {
+        setProducts(data);
       }
-    } catch (error) {
-      console.error('Error loading products from localStorage:', error);
     }
-  }, []);
+    fetchProducts();
+  }, [profile?.shop_id]);
+
+  // Highlight and scroll to product if highlight param is present
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (highlight) {
+      setHighlightedId(highlight);
+      setTimeout(() => setHighlightedId(null), 2500);
+      setTimeout(() => {
+        const ref = productRefs.current[highlight];
+        if (ref) {
+          ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300); // Wait for render
+    }
+  }, [location.search, products]);
   
   // Get unique categories from products
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
@@ -61,14 +85,41 @@ const Products = () => {
     }
   });
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const CLOUDINARY_CLOUD_NAME = "dka53t4ym";
+  const CLOUDINARY_UPLOAD_PRESET = "unsigned_preset";
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setProductImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      try {
+        const response = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+        const data = await response.json();
+        if (data.secure_url) {
+          setProductImage(data.secure_url);
+          toast({
+            title: "Image Uploaded",
+            description: "Image uploaded to Cloudinary successfully.",
+            variant: "default",
+          });
+        } else {
+          throw new Error(data.error?.message || "Cloudinary upload failed");
+        }
+      } catch (error: any) {
+        toast({
+          title: "Image Upload Error",
+          description: error.message || "Failed to upload image to Cloudinary.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -76,41 +127,57 @@ const Products = () => {
     fileInputRef.current?.click();
   };
 
-  const handleAddProductSubmit = (data: any) => {
-    const newProduct: Product = {
-      id: `PRD${Date.now().toString().slice(-6)}`,
+  // Add product to Supabase
+  const handleAddProductSubmit = async (data: any) => {
+    const newProduct = {
       name: data.name,
       description: data.description || `Description for ${data.name}`,
       category: data.category,
       price: parseFloat(data.price),
-      tax: 18, // Default tax percentage
       stock: parseInt(data.stock),
-      barcode: data.barcode || "",
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      image: productImage || undefined,
-      minStock: 5, // Default minimum stock
+      image_url: productImage || null,
+      barcode: data.barcode || '',
+      shop_id: profile.shop_id,
+      // Add other fields as needed
     };
-    
-    setProducts([...products, newProduct]);
-    
-    // Update localStorage to persist the new product
-    try {
-      const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      localStorage.setItem('products', JSON.stringify([...existingProducts, newProduct]));
-    } catch (error) {
-      console.error('Error saving product to localStorage:', error);
+    const { error } = await supabase.from('products').insert([newProduct]);
+    if (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Product Added",
+        description: `The product ${data.name} has been added successfully.`,
+        variant: "default",
+      });
+      setShowAddProductDialog(false);
+      setProductImage(null);
+      productForm.reset();
+      // Refresh product list
+      const { data: updatedProducts } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+      setProducts(updatedProducts || []);
     }
-    
-    toast({
-      title: "Product Added",
-      description: `The product ${data.name} has been added successfully.`,
-      variant: "default",
-    });
-    setShowAddProductDialog(false);
-    setProductImage(null);
-    productForm.reset();
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Product Deleted',
+        description: 'The product has been deleted successfully.',
+        variant: 'default',
+      });
+      setProducts(products.filter((p) => p.id !== id));
+    }
   };
   
   return (
@@ -165,8 +232,19 @@ const Products = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} />
+          {filteredProducts.map(product => (
+            <div
+              key={product.id}
+              ref={el => (productRefs.current[product.id] = el)}
+              className={highlightedId === product.id ? 'ring-4 ring-amber-400 transition-all duration-500' : ''}
+            >
+              <ProductCard
+                product={product}
+                showAddToCart={false}
+                showDeleteButton={!!profile && profile.role === 'admin'}
+                onDelete={handleDeleteProduct}
+              />
+            </div>
           ))}
         </div>
       )}

@@ -4,40 +4,50 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types';
 import { useCart } from '@/contexts/CartContext';
-import { PlusCircle, Tag } from 'lucide-react';
+import { PlusCircle, Tag, Trash2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProductCardProps {
   product: Product;
   showAddToCart?: boolean;
+  showDeleteButton?: boolean;
+  onDelete?: (id: string) => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart = true }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart = true, showDeleteButton = false, onDelete }) => {
   const { addItem } = useCart();
-  
+  const { profile } = useAuth();
+
   const handleAddToCart = () => {
-    // For products with variants, you'd ideally show a modal to pick the variant first
-    // But for simplicity in this demo, we'll just add the base product
     addItem(product, 1);
   };
-  
-  // Format the price with Indian currency format
+
   const formattedPrice = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(product.price);
-  
-  // Determine if product has low stock
+
   const hasLowStock = product.minStock !== undefined && product.stock <= product.minStock;
-  
+
   return (
     <Card className="h-full flex flex-col overflow-hidden">
       <div className="relative pt-[100%] bg-muted">
         <img 
-          src={product.image || '/placeholder.svg'} 
+          src={product.image_url || product.image || '/placeholder.svg'} 
           alt={product.name}
           className="absolute inset-0 h-full w-full object-cover"
         />
+        {showDeleteButton && onDelete && (
+          <button
+            type="button"
+            className="absolute top-2 left-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow focus:outline-none"
+            title="Delete Product"
+            onClick={() => onDelete(product.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
         {hasLowStock && (
           <div className="absolute top-2 right-2 bg-amber-500 text-white text-xs px-2 py-1 rounded-full">
             Low Stock

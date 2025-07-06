@@ -12,6 +12,7 @@ interface NewCustomerDialogProps {
   newCustomer: Partial<Customer>;
   setNewCustomer: (customer: Partial<Customer>) => void;
   onAddCustomer: () => void;
+  refreshCustomers: () => Promise<void>;
 }
 
 export const NewCustomerDialog: React.FC<NewCustomerDialogProps> = ({
@@ -19,11 +20,12 @@ export const NewCustomerDialog: React.FC<NewCustomerDialogProps> = ({
   onOpenChange,
   newCustomer,
   setNewCustomer,
-  onAddCustomer
+  onAddCustomer,
+  refreshCustomers
 }) => {
   const { toast } = useToast();
 
-  const handleAddNewCustomer = () => {
+  const handleAddNewCustomer = async () => {
     if (!newCustomer.name || !newCustomer.phone) {
       toast({
         title: "Missing Information",
@@ -34,6 +36,7 @@ export const NewCustomerDialog: React.FC<NewCustomerDialogProps> = ({
     }
     
     onAddCustomer();
+    if (refreshCustomers) await refreshCustomers();
   };
 
   return (

@@ -105,6 +105,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   
   const updateQuantity = (index: number, quantity: number) => {
+    console.log('updateQuantity called with:', index, quantity);
     if (quantity <= 0) {
       removeItem(index);
       return;
@@ -123,6 +124,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     
     setItems(updatedItems);
+    console.log('Cart items after update:', updatedItems);
   };
   
   const clearCart = () => {

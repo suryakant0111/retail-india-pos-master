@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useProfile } from '@/hooks/useProfile';
 
 interface Transaction {
   id: string;
@@ -23,6 +24,7 @@ const Transactions = () => {
   const [methodFilter, setMethodFilter] = useState('all');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const { toast } = useToast();
+  const { profile } = useProfile();
 
   useEffect(() => {
     // Load transactions from localStorage
@@ -30,13 +32,15 @@ const Transactions = () => {
       const storedTransactions = localStorage.getItem('transactions');
       if (storedTransactions) {
         const parsed = JSON.parse(storedTransactions);
-        
+        // Filter by shop_id if available
+        const filteredByShop = profile?.shop_id
+          ? parsed.filter((tx: any) => tx.shop_id === profile.shop_id)
+          : parsed;
         // Convert string dates back to Date objects
-        const processedTransactions = parsed.map((tx: any) => ({
+        const processedTransactions = filteredByShop.map((tx: any) => ({
           ...tx,
           createdAt: new Date(tx.createdAt)
         }));
-        
         setTransactions(processedTransactions);
       } else {
         setTransactions([]);
@@ -45,7 +49,7 @@ const Transactions = () => {
       console.error('Error loading transactions:', error);
       setTransactions([]);
     }
-  }, []);
+  }, [profile?.shop_id]);
   
   // Filter transactions based on search term and payment method
   const filteredTransactions = transactions.filter(tx => {
