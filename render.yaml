@@ -3,9 +3,8 @@ services:
     name: retail-pos-backend
     env: node
     plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
-    rootDir: backend
+    buildCommand: npm run build:backend
+    startCommand: npm run start:backend
     envVars:
       - key: NODE_ENV
         value: production 
