@@ -72,8 +72,7 @@ const MobileScanner = () => {
   // Send barcode to PC
   const sendBarcodeToPC = async (barcode: string) => {
     try {
-      // Use Render server URL (replace with your actual Render URL)
-      const renderUrl = 'https://your-render-app.onrender.com'; // Replace with your actual URL
+      const renderUrl = 'https://retail-india-pos-master.onrender.com';
       const apiUrl = `${renderUrl}/scanner-scan`;
       
       const response = await fetch(apiUrl, {

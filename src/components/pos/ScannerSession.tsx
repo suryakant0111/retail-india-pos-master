@@ -26,8 +26,7 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
     setIsPolling(true);
     const interval = setInterval(async () => {
       try {
-        // Use Render server URL (replace with your actual Render URL)
-        const renderUrl = 'https://your-render-app.onrender.com'; // Replace with your actual URL
+        const renderUrl = 'https://retail-india-pos-master.onrender.com';
         const response = await fetch(`${renderUrl}/scanner-session/${sessionId}`);
         if (response.ok) {
           const data = await response.json();
@@ -63,7 +62,7 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
       } catch (error) {
         console.error('Error polling scanner session:', error);
       }
-    }, 1000); // Poll every second
+    }, 1000);
 
     return () => {
       clearInterval(interval);
