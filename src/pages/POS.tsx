@@ -6,6 +6,7 @@ import { PaymentDialog } from '@/components/pos/PaymentDialog';
 import { ReceiptDialog } from '@/components/pos/ReceiptDialog';
 import { QuickProductBar } from '@/components/pos/QuickProductBar';
 import { DailySalesSummary } from '@/components/pos/DailySalesSummary';
+import { MobileScannerQR } from '@/components/pos/MobileScannerQR';
 import { useCart } from '@/contexts/CartContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mockCustomers } from '@/data/mockData';
@@ -325,14 +326,20 @@ const POS = () => {
         <DailySalesSummary />
         
         <div className="mb-4">
-          <ProductSearch 
-            products={products}
-            onSearch={setSearchTerm}
-            searchTerm={searchTerm}
-            category={category}
-            onCategoryChange={setCategory}
-            categories={categories}
-          />
+          <div className="flex items-center justify-between mb-2">
+            <ProductSearch 
+              products={products}
+              onSearch={setSearchTerm}
+              searchTerm={searchTerm}
+              category={category}
+              onCategoryChange={setCategory}
+              categories={categories}
+            />
+            <MobileScannerQR
+              products={products}
+              onProductFound={handleQuickAddProduct}
+            />
+          </div>
           
           <QuickProductBar
             products={products}

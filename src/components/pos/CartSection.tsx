@@ -11,7 +11,6 @@ import { CustomerSelection } from './CustomerSelection';
 import { NewCustomerDialog } from './NewCustomerDialog';
 import { OrderSummary } from './OrderSummary';
 import { PaymentButtons } from './PaymentButtons';
-import { SimpleMobileScanner } from './SimpleMobileScanner';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/types';
 import { useProfile } from '@/hooks/useProfile';
@@ -224,13 +223,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
           refreshCustomers={refreshCustomers}
         />
         
-        {/* Mobile Scanner */}
-        <div className="mt-3">
-          <SimpleMobileScanner
-            products={products}
-            onProductFound={handleBarcodeProductFound}
-          />
-        </div>
+
       </div>
       <div className="p-4 bg-white flex flex-col gap-2">
         {/* Forgotten Item Input as a card at the top of the cart */}

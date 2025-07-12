@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { BrowserMultiFormatReader } from '@zxing/library';
 
 const MobileScanner = () => {
   const [isScanning, setIsScanning] = useState(false);
@@ -8,6 +10,8 @@ const MobileScanner = () => {
   const [status, setStatus] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const barcodeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const { toast } = useToast();
 
   // Get session ID from URL
   useEffect(() => {
@@ -18,7 +22,7 @@ const MobileScanner = () => {
     }
   }, []);
 
-  // Start camera
+  // Start camera with barcode scanning
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -34,15 +38,59 @@ const MobileScanner = () => {
         streamRef.current = stream;
         setIsScanning(true);
         setStatus('scanning');
+        console.log('Camera started successfully');
+        
+        // Initialize barcode reader
+        barcodeReaderRef.current = new BrowserMultiFormatReader();
+        
+        // Start scanning
+        barcodeReaderRef.current.decodeFromVideoDevice(
+          undefined, // Use default camera
+          videoRef.current,
+          (result, error) => {
+            if (result) {
+              console.log('Barcode detected:', result.getText());
+              handleBarcodeScanned(result.getText());
+            }
+            if (error && error.name !== 'NotFoundException') {
+              console.error('Barcode scanning error:', error);
+            }
+          }
+        );
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
       setStatus('error');
+      toast({
+        title: "Camera Error",
+        description: "Please allow camera permission and try again",
+        variant: "destructive",
+      });
     }
+  };
+
+  // Handle barcode scanning
+  const handleBarcodeScanned = (barcode: string) => {
+    console.log('Processing scanned barcode:', barcode);
+    setScannedBarcode(barcode);
+    setStatus('success');
+    
+    // Send barcode to PC
+    sendBarcodeToPC(barcode);
+    
+    // Reset after 2 seconds
+    setTimeout(() => {
+      setStatus('scanning');
+      setScannedBarcode('');
+    }, 2000);
   };
 
   // Stop camera
   const stopCamera = () => {
+    if (barcodeReaderRef.current) {
+      barcodeReaderRef.current.reset();
+      barcodeReaderRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -72,8 +120,10 @@ const MobileScanner = () => {
   // Send barcode to PC
   const sendBarcodeToPC = async (barcode: string) => {
     try {
-      const renderUrl = 'https://retail-india-pos-master.onrender.com';
-      const apiUrl = `${renderUrl}/scanner-scan`;
+      const backendUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:3001' 
+        : 'https://retail-india-pos-master.onrender.com';
+      const apiUrl = `${backendUrl}/scanner-scan`;
       
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -116,6 +166,9 @@ const MobileScanner = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (barcodeReaderRef.current) {
+        barcodeReaderRef.current.reset();
+      }
       stopCamera();
     };
   }, []);
@@ -221,9 +274,17 @@ const MobileScanner = () => {
             <li>Click "Start Camera"</li>
             <li>Allow camera permission when prompted</li>
             <li>Point camera at product barcode</li>
+            <li>Hold steady - barcode will be detected automatically</li>
             <li>Product will be added to PC cart automatically</li>
             <li>Use "Demo Scan" to test without real barcode</li>
+            <li>Use manual entry as backup</li>
           </ol>
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+            <p className="text-xs text-green-800">
+              <strong>✅ Real Barcode Scanning Active!</strong> 
+              The camera now scans actual barcodes. Point at any product barcode to test.
+            </p>
+          </div>
         </div>
 
         {/* Connection Status */}

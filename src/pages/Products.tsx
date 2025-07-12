@@ -151,9 +151,13 @@ const Products = () => {
       category: data.category,
       price: parseFloat(data.price),
       stock: parseInt(data.stock),
+      tax: parseFloat(data.tax) || 0,
       image_url: productImage || null,
       barcode: data.barcode || '',
       shop_id: profile.shop_id,
+      unitType: 'unit',
+      unitLabel: 'pcs',
+      isActive: true,
       // Add other fields as needed
     };
     const { error } = await supabase.from('products').insert([newProduct]);
@@ -418,7 +422,7 @@ const Products = () => {
                   <FormItem>
                     <FormLabel>GST/Tax Rate (%)</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} max={100} step={0.01} placeholder="Enter GST/Tax rate" {...field} value={field.value ?? 18} onChange={e => field.onChange(Number(e.target.value))} />
+                      <Input type="number" min={0} max={100} step={0.01} placeholder="Enter GST/Tax rate" {...field} value={field.value ?? 0} onChange={e => field.onChange(Number(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

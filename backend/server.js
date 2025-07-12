@@ -12,7 +12,7 @@ const app = express();
 
 // Enhanced CORS configuration for production
 app.use(cors({
-  origin: ['https://retailpos.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
+  origin: ['https://retailpos.vercel.app', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -150,6 +150,18 @@ app.get('/scanner-session/:sessionId', (req, res) => {
     res.json({ scans: sessionData });
   } catch (error) {
     console.error('Scanner session API error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/scanner-session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    console.log(`Deleting session: ${sessionId}`);
+    scannerSessions.delete(sessionId);
+    res.json({ success: true, message: 'Session deleted' });
+  } catch (error) {
+    console.error('Scanner session delete error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
