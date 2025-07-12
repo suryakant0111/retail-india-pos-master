@@ -28,9 +28,9 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     const session = `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setSessionId(session);
     setIsScannerActive(true);
-    setProcessedBarcodes(new Set()); // Reset processed barcodes for new session
+    setProcessedBarcodes(new Set());
     
-    // Use local IP address for mobile access, fallback to window.location.origin
+    // Use local IP address for mobile access
     let baseUrl = window.location.origin;
     if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
       baseUrl = `http://${window.location.hostname}:5173`;
@@ -41,38 +41,11 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     // Generate QR code
     generateQRCode(url);
     
-    // Immediately connect to backend session
-    connectToBackendSession(session);
-    
     toast({
       title: "Scanner Started",
-      description: "Mobile scanner is now active and polling for scans",
+      description: "Mobile scanner is now active",
       variant: "success",
     });
-  };
-
-  // Connect to backend session immediately
-  const connectToBackendSession = async (sessionId: string) => {
-    try {
-      let backendUrl = 'https://retail-india-pos-master.onrender.com';
-      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
-        backendUrl = 'http://localhost:3001';
-      }
-      
-      const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connected: true })
-      });
-      
-      if (response.ok) {
-        console.log('[MobileScannerQR] Backend session connected:', sessionId);
-      } else {
-        console.warn('[MobileScannerQR] Failed to connect to backend session');
-      }
-    } catch (error) {
-      console.error('[MobileScannerQR] Error connecting to backend session:', error);
-    }
   };
 
   // Generate QR code for the URL
@@ -132,53 +105,57 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     });
   };
 
-  // Start polling for scanned barcodes
+  // Simple polling for scanned barcodes
   useEffect(() => {
     if (!sessionId || !isScannerActive) return;
 
-    // Robust backend URL for polling
-    let backendUrl = 'https://retail-india-pos-master.onrender.com';
-    if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
-      backendUrl = 'http://localhost:3001';
-    }
-
-    console.log('[MobileScannerQR] Polling started for session:', sessionId);
+    console.log('[MobileScannerQR] Starting simple polling for session:', sessionId);
+    
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${backendUrl}/scanner-session/${sessionId}`);
-        if (!response.ok) {
-          throw new Error(`Polling failed: ${response.status}`);
+        // Use backend URL
+        let backendUrl = 'https://retail-india-pos-master.onrender.com';
+        if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+          backendUrl = 'http://localhost:3001';
         }
+        
+        const response = await fetch(`${backendUrl}/scanner-session/${sessionId}`);
+        
+        if (!response.ok) {
+          console.warn('[MobileScannerQR] Polling failed:', response.status);
+          return;
+        }
+        
         const data = await response.json();
         const scans = data.scans || [];
+        
         if (scans.length > 0) {
           const latestScan = scans[scans.length - 1];
           const barcode = latestScan.barcode;
-          console.log('[MobileScannerQR] Scan attempt:', barcode);
-          // Check if this barcode has already been processed
+          
+          console.log('[MobileScannerQR] New scan detected:', barcode);
+          
+          // Prevent duplicate processing
           if (processedBarcodes.has(barcode)) {
             console.log('[MobileScannerQR] Barcode already processed:', barcode);
             return;
           }
+          
           // Find product by barcode
-          const product = products.find(p => {
-            const match = p.barcode && p.barcode.toString() === barcode;
-            if (match) {
-              console.log('[MobileScannerQR] Product matched:', p);
-            }
-            return match;
-          });
+          const product = products.find(p => p.barcode && p.barcode.toString() === barcode);
+          
           if (product) {
+            console.log('[MobileScannerQR] Product found:', product.name);
             setProcessedBarcodes(prev => new Set([...prev, barcode]));
-            onProductFound(product); // This should add to cart in POS
+            onProductFound(product);
             toast({
-              title: "Product Scanned",
+              title: "Product Added!",
               description: `${product.name} added to cart`,
               variant: "success",
             });
           } else {
+            console.log('[MobileScannerQR] No product found for barcode:', barcode);
             setProcessedBarcodes(prev => new Set([...prev, barcode]));
-            console.warn('[MobileScannerQR] No product found with barcode:', barcode);
             toast({
               title: "Product Not Found",
               description: `No product found with barcode: ${barcode}`,
@@ -187,14 +164,9 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
           }
         }
       } catch (error) {
-        console.error('[MobileScannerQR] Error polling scanner session:', error);
-        toast({
-          title: "Polling Error",
-          description: `Could not reach backend: ${error}`,
-          variant: "destructive",
-        });
+        console.error('[MobileScannerQR] Polling error:', error);
       }
-    }, 500); // Faster polling for more responsive scanning
+    }, 1000); // Check every second
 
     return () => {
       clearInterval(interval);
@@ -339,7 +311,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
 
             {/* Manual Entry */}
             <div className="space-y-2">
-              <span className="text-sm font-medium">Manual Entry (Fallback)</span>
+              <span className="text-sm font-medium">Manual Entry (Testing)</span>
               <div className="flex gap-2">
                 <input
                   type="text"
