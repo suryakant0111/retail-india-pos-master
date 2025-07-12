@@ -52,20 +52,9 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
   
   const processBarcodeInput = () => {
     if (!barcodeValue.trim()) return;
-    
     // First try to find the product in the regular products array
     let product = products.find(p => p.barcode === barcodeValue.trim());
-    
-    // If not found, try to find in localStorage (for newly added products)
-    if (!product) {
-      try {
-        const storedProducts = JSON.parse(localStorage.getItem('products') || '[]');
-        product = storedProducts.find((p: Product) => p.barcode === barcodeValue.trim());
-      } catch (error) {
-        console.error('Error loading products from localStorage:', error);
-      }
-    }
-    
+    // If not found, do not check localStorage, just show not found
     if (product) {
       addItem(product, 1);
       setBarcodeValue('');
@@ -80,7 +69,6 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
         variant: "destructive",
       });
     }
-    
     if (barcodeInputRef.current) {
       barcodeInputRef.current.focus();
     }

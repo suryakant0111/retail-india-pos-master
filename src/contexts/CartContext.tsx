@@ -13,6 +13,7 @@ interface CartContextType {
   addItem: (product: Product, quantity: number, variant?: ProductVariant) => void;
   removeItem: (index: number) => void;
   updateQuantity: (index: number, quantity: number) => void;
+  updatePrice: (index: number, price: number) => void;
   clearCart: () => void;
   setCustomer: (customer: Customer | null) => void;
   setDiscount: (value: number, type: 'percentage' | 'fixed') => void;
@@ -26,11 +27,12 @@ const CartContext = createContext<CartContextType>({
   customer: null,
   discountValue: 0,
   discountType: 'percentage',
-  taxRate: 18,
+  taxRate: 0,
   setTaxRate: () => {},
   addItem: () => {},
   removeItem: () => {},
   updateQuantity: () => {},
+  updatePrice: () => {},
   clearCart: () => {},
   setCustomer: () => {},
   setDiscount: () => {},
@@ -46,7 +48,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customer, setCustomerState] = useState<Customer | null>(null);
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
-  const [taxRate, setTaxRate] = useState(18);
+  const [taxRate, setTaxRate] = useState(0);
   const { toast } = useToast();
   
   // Calculate totals
@@ -70,6 +72,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (variant) {
         return item.product.id === product.id && item.variant?.id === variant.id;
       }
+      // For manual items, never merge (unique id)
+      if (product.id.startsWith('manual-')) return false;
       return item.product.id === product.id && !item.variant;
     });
     
@@ -90,7 +94,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         variant,
         quantity,
         price,
-        totalPrice: (price * quantity)
+        totalPrice: (price * quantity),
+        // Pass through unitLabel and unitType for manual/custom items
+        unitLabel: product.unitLabel,
+        unitType: product.unitType,
       }]);
     }
     
@@ -124,6 +131,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setItems(updatedItems);
     console.log('Cart items after update:', updatedItems);
+  };
+
+  const updatePrice = (index: number, price: number) => {
+    const updatedItems = [...items];
+    const item = updatedItems[index];
+    updatedItems[index] = {
+      ...item,
+      price,
+      totalPrice: price * item.quantity
+    };
+    setItems(updatedItems);
   };
   
   const clearCart = () => {
@@ -160,6 +178,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addItem,
         removeItem,
         updateQuantity,
+        updatePrice,
         clearCart,
         setCustomer,
         setDiscount,

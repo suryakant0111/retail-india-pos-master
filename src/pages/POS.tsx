@@ -14,6 +14,7 @@ import { Product } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { Customer } from '@/types';
 import { useProfile } from '@/hooks/useProfile';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 
 const POS = () => {
   const { 
@@ -25,7 +26,8 @@ const POS = () => {
     clearCart,
     discountValue,
     discountType,
-    addItem
+    addItem,
+    setTaxRate
   } = useCart();
   
   const { toast } = useToast();
@@ -40,8 +42,14 @@ const POS = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [invoiceReference, setInvoiceReference] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [businessSettings, setBusinessSettings] = useState<any>({});
+  const [paymentSettings, setPaymentSettings] = useState<any>({});
+  const [posMode, setPosMode] = useState<'retail' | 'kirana'>('retail');
   const { profile } = useProfile();
-  
+  // Remove paymentStatus and showStatusDialog state
+  const [recentSalesProducts, setRecentSalesProducts] = useState<Product[]>([]);
+  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
+
   const fetchProducts = async () => {
     if (!profile?.shop_id) return;
     const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
@@ -52,23 +60,83 @@ const POS = () => {
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-    async function fetchCustomers() {
-      if (!profile?.shop_id) {
-        console.log('POS profile.shop_id is missing:', profile);
-        return;
-      }
-      const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
-      if (error) {
-        console.error('Error fetching customers:', error);
-      } else if (data) {
-        setCustomers(data);
-        console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
-      }
+  // Fetch recent sales (latest 10 invoices)
+  const fetchRecentSales = async () => {
+    console.log('fetchRecentSales called with shop_id:', profile?.shop_id);
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('items')
+      .eq('shop_id', profile.shop_id)
+      .order('createdAt', { ascending: false })
+      .limit(10);
+    if (error) {
+      console.error('Error fetching recent sales invoices:', error);
+      return;
     }
-    fetchCustomers();
-    console.log('POS profile.shop_id:', profile?.shop_id);
+    console.log('Fetched recent invoices:', data);
+    if (data) {
+      // Flatten all products from invoice items, robustly
+      const products = data.flatMap(inv =>
+        Array.isArray(inv.items)
+          ? inv.items.map((item: any) => item && item.product ? item.product : null).filter(Boolean)
+          : []
+      );
+      // Remove duplicates by product id
+      const uniqueProducts = Array.from(new Map(products.map(p => [p.id, p])).values());
+      console.log('Extracted recent sale products:', uniqueProducts);
+      setRecentSalesProducts(uniqueProducts);
+    }
+  };
+
+  // Fetch recent invoices (latest 10)
+  const fetchRecentInvoices = async () => {
+    console.log('fetchRecentInvoices called with shop_id:', profile?.shop_id);
+    if (!profile?.shop_id) return;
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('shop_id', profile.shop_id)
+      .order('createdAt', { ascending: false })
+      .limit(10);
+    if (error) {
+      console.error('Error fetching recent invoices:', error);
+      return;
+    }
+    console.log('Fetched recent invoices:', data);
+    setRecentInvoices(data || []);
+  };
+
+  useEffect(() => {
+    if (profile?.shop_id) {
+      fetchProducts();
+      fetchRecentInvoices();
+      async function fetchCustomers() {
+        const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
+        if (error) {
+          console.error('Error fetching customers:', error);
+        } else if (data) {
+          setCustomers(data);
+          console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
+        }
+      }
+      async function fetchSettings() {
+        // Assume shop_settings table: shop_id, business_settings, payment_settings, pos_mode
+        const { data, error } = await supabase.from('shop_settings').select('*').eq('shop_id', profile.shop_id).single();
+        if (!error && data) {
+          setBusinessSettings(data.business_settings || {});
+          setPaymentSettings(data.payment_settings || {});
+          setPosMode(data.pos_mode || 'retail');
+        } else {
+          setBusinessSettings({});
+          setPaymentSettings({});
+          setPosMode('retail');
+        }
+      }
+      fetchCustomers();
+      fetchSettings();
+      console.log('POS profile.shop_id:', profile?.shop_id);
+    }
   }, [profile?.shop_id]);
 
   const refreshCustomers = async () => {
@@ -96,8 +164,8 @@ const POS = () => {
       return;
     }
     // Prompt for custom tax rate
-    let taxRate = 18;
-    const userInput = window.prompt(`Enter GST/Tax Rate (%) for ${product.name}:`, product.tax !== undefined ? product.tax.toString() : '18');
+    let taxRate = 0;
+    const userInput = window.prompt(`Enter GST/Tax Rate (%) for ${product.name}:`, product.tax !== undefined ? product.tax.toString() : '0');
     if (userInput !== null && userInput !== '') {
       const parsed = parseFloat(userInput);
       if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
@@ -106,7 +174,8 @@ const POS = () => {
     } else if (product.tax !== undefined) {
       taxRate = product.tax;
     }
-    addItem(product, 1, undefined, taxRate);
+    setTaxRate(taxRate);
+    addItem(product, 1);
     toast({
       title: "Product Added",
       description: `${product.name} has been added to cart with ${taxRate}% GST/Tax`,
@@ -116,51 +185,14 @@ const POS = () => {
   
   const handlePaymentConfirmed = () => {
     setPaymentSuccess(true);
-    
     if (paymentMethod === 'cash') {
       setShowReceiptDialog(true);
     } else {
       finalizeTransaction();
     }
   };
-  
-  const updateCustomerPurchases = () => {
-    if (!customer) return;
-    
-    try {
-      const storedCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
-      
-      const updatedCustomers = storedCustomers.map((c: any) => {
-        if (c.id === customer.id) {
-          return {
-            ...c,
-            totalPurchases: (c.totalPurchases || 0) + total,
-            loyaltyPoints: (c.loyaltyPoints || 0) + Math.floor(total / 100),
-            updatedAt: new Date()
-          };
-        }
-        return c;
-      });
-      
-      if (!storedCustomers.some((c: any) => c.id === customer.id)) {
-        updatedCustomers.push({
-          ...customer,
-          totalPurchases: total,
-          loyaltyPoints: Math.floor(total / 100),
-          updatedAt: new Date()
-        });
-      }
-      
-      localStorage.setItem('customers', JSON.stringify(updatedCustomers));
-    } catch (error) {
-      console.error('Error updating customer purchases:', error);
-    }
-  };
-  
+
   const finalizeTransaction = async () => {
-    const businessSettings = JSON.parse(localStorage.getItem('businessSettings') || '{}');
-    const paymentSettings = JSON.parse(localStorage.getItem('paymentSettings') || '{}');
-    
     try {
       const newInvoice = {
         id: Date.now().toString(),
@@ -180,18 +212,46 @@ const POS = () => {
         paymentDetails: paymentSettings,
         shop_id: profile?.shop_id || null // Add shop_id to invoice
       };
-      
       // Insert invoice into Supabase
       const { error: invoiceInsertError } = await supabase.from('invoices').insert([newInvoice]);
       if (invoiceInsertError) {
         console.error('Error inserting invoice:', invoiceInsertError, newInvoice);
         toast({
           title: 'Invoice Error',
-          description: invoiceInsertError.message,
+          description: `Error: ${invoiceInsertError.message}\nData: ${JSON.stringify(newInvoice, null, 2)}`,
           variant: 'destructive',
         });
+      } else {
+        toast({
+          title: 'Invoice Saved',
+          description: `Invoice #${newInvoice.invoiceNumber} saved with status: paid`,
+          variant: 'success',
+        });
       }
-
+      // Insert payment into Supabase
+      const newPayment = {
+        order_id: newInvoice.id, // Use invoice id as order_id
+        amount: total,
+        method: paymentMethod,
+        status: 'paid',
+        created_at: new Date().toISOString(),
+        shop_id: profile?.shop_id || null,
+      };
+      const { error: paymentInsertError } = await supabase.from('payments').insert([newPayment]);
+      if (paymentInsertError) {
+        console.error('Error inserting payment:', paymentInsertError, newPayment);
+        toast({
+          title: 'Payment Error',
+          description: `Error: ${paymentInsertError.message}\nData: ${JSON.stringify(newPayment, null, 2)}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Payment Saved',
+          description: `Payment for Invoice #${newInvoice.invoiceNumber} saved with status: paid`,
+          variant: 'success',
+        });
+      }
       // Update customer's totalPurchases and loyaltyPoints in Supabase
       if (customer && customer.id) {
         await supabase
@@ -203,27 +263,6 @@ const POS = () => {
           })
           .eq('id', customer.id);
       }
-
-      const storedInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
-      const updatedInvoices = [...storedInvoices, newInvoice];
-      localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
-      
-      const newTransaction = {
-        id: Date.now().toString(),
-        invoiceId: newInvoice.id,
-        invoiceNumber: invoiceReference,
-        amount: total,
-        paymentMethod: paymentMethod,
-        customer: customer ? customer.name : 'Walk-in Customer',
-        createdAt: new Date(),
-        shop_id: profile?.shop_id || null, // Add shop_id to transaction
-      };
-      
-      const storedTransactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-      localStorage.setItem('transactions', JSON.stringify([...storedTransactions, newTransaction]));
-      
-      updateCustomerPurchases();
-
       // Update product stock in Supabase
       for (const item of items) {
         const productId = item.product.id;
@@ -232,23 +271,19 @@ const POS = () => {
         const newStock = Math.max(0, currentStock - soldQty);
         await supabase.from('products').update({ stock: newStock }).eq('id', productId);
       }
-
       await fetchProducts();
-
       toast({
-        title: "Payment Successful",
-        description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()}`,
-        variant: "success",
+        title: 'Payment Successful',
+        description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()} (PAID)`,
+        variant: 'success',
       });
       window.dispatchEvent(new Event('transactionAdded'));
     } catch (error) {
       console.error('Error saving invoice:', error);
     }
-    
     setShowPaymentDialog(false);
     setShowReceiptDialog(false);
     setPaymentSuccess(false);
-    
     clearCart();
   };
   
@@ -308,6 +343,7 @@ const POS = () => {
             filteredProducts={filteredProducts}
             activeTab={activeTab}
             onTabChange={setActiveTab}
+            recentInvoices={recentInvoices}
           />
         </div>
       </div>
@@ -328,6 +364,9 @@ const POS = () => {
         onPaymentConfirmed={handlePaymentConfirmed}
         generateReference={generateReference}
       />
+
+      {/* Payment Status Selection Dialog */}
+      {/* Remove the Payment Status Selection Dialog from the JSX */}
       
       <ReceiptDialog
         open={showReceiptDialog}

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useProfile } from '@/hooks/useProfile';
+import { supabase } from '@/integrations/supabase/client';
 
 export const DailySalesSummary: React.FC = () => {
   const [todaySales, setTodaySales] = useState<{
@@ -31,34 +32,38 @@ export const DailySalesSummary: React.FC = () => {
     };
   }, [profile?.shop_id]);
 
-  const loadDailySales = () => {
+  const loadDailySales = async () => {
     try {
       if (!profile?.shop_id) return;
-      // Load transactions from localStorage
-      const transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-      // Filter by shop_id if available
-      const filteredByShop = transactions.filter((tx: any) => tx.shop_id === profile.shop_id);
-      // Filter for today's transactions
+      // Get today's date range
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayTransactions = filteredByShop.filter((tx: any) => {
-        const txDate = new Date(tx.createdAt);
-        txDate.setHours(0, 0, 0, 0);
-        return txDate.getTime() === today.getTime();
-      });
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      // Fetch payments from Supabase for today and this shop
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('shop_id', profile.shop_id)
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString());
+      if (error) {
+        throw error;
+      }
+      const todayTransactions = data || [];
       // Calculate totals
-      const totalAmount = todayTransactions.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+      const totalAmount = todayTransactions.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
       const transactionCount = todayTransactions.length;
       // Calculate by payment method
       const cashSales = todayTransactions
-        .filter((tx: any) => tx.paymentMethod === 'cash')
-        .reduce((sum: number, tx: any) => sum + tx.amount, 0);
+        .filter((tx: any) => tx.method === 'cash')
+        .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
       const upiSales = todayTransactions
-        .filter((tx: any) => tx.paymentMethod === 'upi')
-        .reduce((sum: number, tx: any) => sum + tx.amount, 0);
+        .filter((tx: any) => tx.method === 'upi')
+        .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
       const cardSales = todayTransactions
-        .filter((tx: any) => tx.paymentMethod === 'card')
-        .reduce((sum: number, tx: any) => sum + tx.amount, 0);
+        .filter((tx: any) => tx.method === 'card')
+        .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
       setTodaySales({
         totalAmount,
         transactionCount,

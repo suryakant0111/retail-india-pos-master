@@ -19,6 +19,8 @@ import { Search, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import { Product } from '@/types';
 import { mockProducts } from '@/data/mockData';
 import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useProfile } from '@/hooks/useProfile';
 
 const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,26 +35,21 @@ const Inventory = () => {
   const [productMinStock, setProductMinStock] = useState('');
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const { toast } = useToast();
+  const { profile } = useProfile();
 
   useEffect(() => {
-    // Load products from localStorage and merge with mock data
-    try {
-      const storedProducts = localStorage.getItem('products');
-      if (storedProducts) {
-        const parsedProducts = JSON.parse(storedProducts);
-        if (Array.isArray(parsedProducts)) {
-          setProducts([...mockProducts, ...parsedProducts]);
-        } else {
-          setProducts([...mockProducts]);
-        }
-      } else {
-        setProducts([...mockProducts]);
+    async function fetchProducts() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+      if (error) {
+        console.error('Error fetching products:', error);
+        setProducts([]);
+      } else if (data) {
+        setProducts(data);
       }
-    } catch (error) {
-      console.error('Error loading products:', error);
-      setProducts([...mockProducts]);
     }
-  }, []);
+    fetchProducts();
+  }, [profile?.shop_id]);
   
   // Get unique categories
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
@@ -94,38 +91,33 @@ const Inventory = () => {
     setOpenDialog(true);
   };
 
-  const handleDeleteProduct = (product: Product) => {
+  const handleDeleteProduct = async (product: Product) => {
     setSelectedProduct(product);
     setOpenAlertDialog(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!selectedProduct) return;
-    
-    const updatedProducts = products.filter(p => p.id !== selectedProduct.id);
-    setProducts(updatedProducts);
-    
-    // Update localStorage
     try {
-      const storedProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      const updatedStoredProducts = storedProducts.filter((p: Product) => p.id !== selectedProduct.id);
-      localStorage.setItem('products', JSON.stringify(updatedStoredProducts));
-      
-      toast({
-        title: "Product Deleted",
-        description: `${selectedProduct.name} has been removed from inventory.`,
-        variant: "default",
-      });
+      const { error } = await supabase.from('products').delete().eq('id', selectedProduct.id);
+      if (!error) {
+        setProducts(products.filter(p => p.id !== selectedProduct.id));
+        toast({
+          title: "Product Deleted",
+          description: `${selectedProduct.name} has been removed from inventory.`,
+          variant: "default",
+        });
+      } else {
+        throw error;
+      }
     } catch (error) {
-      console.error('Error updating localStorage:', error);
+      console.error('Error deleting product:', error);
     }
-    
     setOpenAlertDialog(false);
   };
 
-  const saveProductChanges = () => {
+  const saveProductChanges = async () => {
     if (!selectedProduct) return;
-    
     const updatedProduct = {
       ...selectedProduct,
       name: productName,
@@ -133,32 +125,23 @@ const Inventory = () => {
       price: parseFloat(productPrice),
       stock: parseInt(productStock),
       minStock: productMinStock ? parseInt(productMinStock) : undefined,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     };
-    
-    const updatedProducts = products.map(p => 
-      p.id === selectedProduct.id ? updatedProduct : p
-    );
-    
-    setProducts(updatedProducts);
-    
-    // Update localStorage
     try {
-      const storedProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      const updatedStoredProducts = storedProducts.map((p: Product) => 
-        p.id === selectedProduct.id ? updatedProduct : p
-      );
-      localStorage.setItem('products', JSON.stringify(updatedStoredProducts));
-      
-      toast({
-        title: "Product Updated",
-        description: `${updatedProduct.name} has been updated.`,
-        variant: "default",
-      });
+      const { error } = await supabase.from('products').update(updatedProduct).eq('id', selectedProduct.id);
+      if (!error) {
+        setProducts(products.map(p => p.id === selectedProduct.id ? updatedProduct : p));
+        toast({
+          title: "Product Updated",
+          description: `${updatedProduct.name} has been updated.`,
+          variant: "default",
+        });
+      } else {
+        throw error;
+      }
     } catch (error) {
-      console.error('Error updating localStorage:', error);
+      console.error('Error updating product:', error);
     }
-    
     setOpenDialog(false);
   };
 

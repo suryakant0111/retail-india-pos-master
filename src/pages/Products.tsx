@@ -29,7 +29,35 @@ const Products = () => {
   const location = useLocation();
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const productRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
   
+  const productForm = useForm({
+    defaultValues: {
+      name: '',
+      category: '',
+      price: '',
+      stock: '',
+      description: '',
+      barcode: '',
+      tax: ''
+    }
+  });
+
+  // Reset form values when editProduct changes
+  useEffect(() => {
+    if (editProduct) {
+      productForm.reset({
+        name: editProduct.name || '',
+        category: editProduct.category || '',
+        price: editProduct.price?.toString() || '',
+        stock: editProduct.stock?.toString() || '',
+        description: editProduct.description || '',
+        barcode: editProduct.barcode || '',
+        tax: editProduct.tax?.toString() || '',
+      });
+    }
+  }, [editProduct, productForm]);
+
   // Fetch products from Supabase on mount or when shop_id changes
   useEffect(() => {
     async function fetchProducts() {
@@ -71,18 +99,6 @@ const Products = () => {
     const matchesCategory = category === 'all' || product.category === category;
     
     return matchesSearch && matchesCategory;
-  });
-
-  // Form for adding a new product
-  const productForm = useForm({
-    defaultValues: {
-      name: '',
-      category: '',
-      price: '',
-      stock: '',
-      description: '',
-      barcode: ''
-    }
   });
 
   const CLOUDINARY_CLOUD_NAME = "dka53t4ym";
@@ -231,18 +247,19 @@ const Products = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {filteredProducts.map(product => (
             <div
               key={product.id}
               ref={el => (productRefs.current[product.id] = el)}
-              className={highlightedId === product.id ? 'ring-4 ring-amber-400 transition-all duration-500' : ''}
+              className={(highlightedId === product.id ? 'ring-4 ring-amber-400 transition-all duration-500 ' : '') + 'max-w-[180px] mx-auto'}
             >
               <ProductCard
                 product={product}
                 showAddToCart={false}
                 showDeleteButton={!!profile && profile.role === 'admin'}
                 onDelete={handleDeleteProduct}
+                onEdit={() => setEditProduct(product)}
               />
             </div>
           ))}
@@ -397,7 +414,6 @@ const Products = () => {
               <FormField
                 control={productForm.control}
                 name="tax"
-                defaultValue={18}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>GST/Tax Rate (%)</FormLabel>
@@ -428,6 +444,143 @@ const Products = () => {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Product Dialog */}
+      <Dialog open={!!editProduct} onOpenChange={open => { if (!open) setEditProduct(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Product</DialogTitle>
+            <DialogDescription>
+              Update product details and restock as needed.
+            </DialogDescription>
+          </DialogHeader>
+          {editProduct && (
+            <Form {...productForm}>
+              <form
+                onSubmit={productForm.handleSubmit(async (data) => {
+                  const updatedProduct = {
+                    ...editProduct,
+                    name: data.name,
+                    description: data.description,
+                    category: data.category,
+                    price: parseFloat(data.price),
+                    stock: parseInt(data.stock),
+                    barcode: data.barcode,
+                    tax: parseFloat(data.tax),
+                  };
+                  const { error } = await supabase.from('products').update(updatedProduct).eq('id', editProduct.id);
+                  if (error) {
+                    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                  } else {
+                    toast({ title: 'Product Updated', description: `The product ${data.name} has been updated.`, variant: 'default' });
+                    setEditProduct(null);
+                    // Refresh product list
+                    const { data: updatedProducts } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+                    setProducts(updatedProducts || []);
+                  }
+                })}
+                className="space-y-4"
+              >
+                <FormField
+                  control={productForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter product name" {...field} defaultValue={editProduct.name} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter category" {...field} defaultValue={editProduct.category} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter product description" {...field} defaultValue={editProduct.description} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="barcode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Barcode</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter product barcode" {...field} defaultValue={editProduct.barcode} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Price (₹)</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="Enter price" {...field} defaultValue={editProduct.price} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="tax"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>GST/Tax Rate (%)</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} max={100} step={0.01} placeholder="Enter GST/Tax rate" {...field} defaultValue={editProduct.tax} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={productForm.control}
+                  name="stock"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Stock</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="Enter stock quantity" {...field} defaultValue={editProduct.stock} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="submit">Update Product</Button>
+                  <Button type="button" variant="secondary" onClick={() => setEditProduct(null)}>Cancel</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

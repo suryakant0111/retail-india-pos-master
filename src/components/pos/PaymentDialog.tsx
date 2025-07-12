@@ -4,6 +4,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { UpiQRCode } from '@/components/pos/UpiQRCode';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { supabase } from '@/integrations/supabase/client';
+import { useProfile } from '@/hooks/useProfile';
 
 interface PaymentSettings {
   upiId: string;
@@ -34,6 +36,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 }) => {
   const [upiId, setUpiId] = useState('7259538046@ybl');
   const [reference, setReference] = useState('');
+  const { profile } = useProfile();
   
   // Generate a reference only when the dialog first opens, not on every render
   useEffect(() => {
@@ -60,19 +63,20 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [open]);
   
   useEffect(() => {
-    // Load payment settings from localStorage
-    try {
-      const storedSettings = localStorage.getItem('paymentSettings');
-      if (storedSettings) {
-        const settings = JSON.parse(storedSettings) as PaymentSettings;
-        if (settings.upiId) {
-          setUpiId(settings.upiId);
-        }
+    // Fetch payment settings from Supabase
+    async function fetchPaymentSettings() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase
+        .from('shop_settings')
+        .select('payment_settings')
+        .eq('shop_id', profile.shop_id)
+        .single();
+      if (data && data.payment_settings && data.payment_settings.upiId) {
+        setUpiId(data.payment_settings.upiId);
       }
-    } catch (error) {
-      console.error('Error loading payment settings:', error);
     }
-  }, []);
+    fetchPaymentSettings();
+  }, [profile?.shop_id]);
   
   // Safe handler for payment confirmation
   const handlePaymentConfirmed = () => {

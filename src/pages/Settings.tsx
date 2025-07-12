@@ -51,6 +51,7 @@ const Settings = () => {
   });
   const [loadingBusiness, setLoadingBusiness] = useState(false);
   const [savingBusiness, setSavingBusiness] = useState(false);
+  const [posMode, setPosMode] = useState<'retail' | 'kirana'>('retail');
 
   useEffect(() => {
     async function fetchBusinessSettings() {
@@ -72,7 +73,22 @@ const Settings = () => {
       }
       setLoadingBusiness(false);
     }
+    async function fetchPaymentSettings() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase
+        .from('shop_settings')
+        .select('payment_settings, pos_mode')
+        .eq('shop_id', profile.shop_id)
+        .single();
+      if (data && data.payment_settings) {
+        setPaymentSettings(data.payment_settings);
+      }
+      if (data && data.pos_mode) {
+        setPosMode(data.pos_mode);
+      }
+    }
     fetchBusinessSettings();
+    fetchPaymentSettings();
   }, [profile?.shop_id]);
   
   const handlePaymentSettingChange = (field: keyof PaymentSettings, value: string | boolean) => {
@@ -89,14 +105,26 @@ const Settings = () => {
     });
   };
   
-  const savePaymentSettings = () => {
+  const savePaymentSettings = async () => {
+    if (!profile?.shop_id) return;
     try {
-      localStorage.setItem('paymentSettings', JSON.stringify(paymentSettings));
-      toast({
-        title: "Settings Saved",
-        description: "Payment settings have been updated successfully.",
-        variant: "default",
-      });
+      // Upsert payment_settings and pos_mode into shop_settings table
+      const { error } = await supabase
+        .from('shop_settings')
+        .upsert({
+          shop_id: profile.shop_id,
+          payment_settings: paymentSettings,
+          pos_mode: posMode
+        }, { onConflict: 'shop_id' });
+      if (!error) {
+        toast({
+          title: "Settings Saved",
+          description: "Payment and POS mode settings have been updated successfully.",
+          variant: "default",
+        });
+      } else {
+        throw error;
+      }
     } catch (error) {
       console.error('Error saving payment settings:', error);
       toast({
@@ -223,6 +251,29 @@ const Settings = () => {
                       onCheckedChange={(checked) => handlePaymentSettingChange('enableCard', checked)}
                     />
                   </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">POS Mode</h3>
+                <div className="flex items-center gap-4">
+                  <Label htmlFor="posModeRetail">Standard Retail</Label>
+                  <input
+                    type="radio"
+                    id="posModeRetail"
+                    name="posMode"
+                    value="retail"
+                    checked={posMode === 'retail'}
+                    onChange={() => setPosMode('retail')}
+                  />
+                  <Label htmlFor="posModeKirana">Kirana/Grocery</Label>
+                  <input
+                    type="radio"
+                    id="posModeKirana"
+                    name="posMode"
+                    value="kirana"
+                    checked={posMode === 'kirana'}
+                    onChange={() => setPosMode('kirana')}
+                  />
                 </div>
               </div>
             </CardContent>

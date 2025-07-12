@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { UserRound, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -21,6 +21,14 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
   onNewCustomerClick
 }) => {
   const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const filteredCustomers = customers.filter(cust =>
+    cust.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (cust.phone && cust.phone.includes(searchTerm)) ||
+    (cust.email && cust.email.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   const handleSelectCustomer = (customer: Customer | null) => {
     setCustomer(customer);
@@ -28,11 +36,15 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
       title: "Customer Selected",
       description: customer ? `${customer.name} added to transaction` : "Walk-in customer selected",
     });
+    // Close the dialog automatically after selection
+    setIsDialogOpen(false);
+    // Clear search term when dialog closes
+    setSearchTerm('');
   };
 
   return (
     <div className="flex items-center gap-2">
-      <Dialog>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="outline" className="flex-grow flex items-center justify-between" size="sm">
             <div className="flex items-center">
@@ -45,6 +57,14 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
           <DialogHeader>
             <DialogTitle>Select Customer</DialogTitle>
           </DialogHeader>
+          <input
+            type="text"
+            placeholder="Search customers by name, phone, or email"
+            className="w-full mb-2 px-3 py-2 border rounded text-sm"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            autoFocus
+          />
           <div className="space-y-4 max-h-[60vh] overflow-auto">
             <Button 
               variant="outline" 
@@ -53,7 +73,7 @@ export const CustomerSelection: React.FC<CustomerSelectionProps> = ({
             >
               Walk-in Customer
             </Button>
-            {customers.map((cust) => (
+            {filteredCustomers.map((cust) => (
               <Card key={cust.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleSelectCustomer(cust)}>
                 <CardContent className="p-4">
                   <div className="font-medium">{cust.name}</div>

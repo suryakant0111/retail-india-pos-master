@@ -18,6 +18,9 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
+// In-memory storage for scanner sessions (in production, use Redis or database)
+const scannerSessions = new Map();
+
 app.post('/create-user', requireAdmin, async (req, res) => {
   console.log('Received POST /create-user', req.body);
   const { email, password, role, ...user_metadata } = req.body;
@@ -86,6 +89,58 @@ app.post('/remove-employee', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Scanner API endpoints
+app.post('/scanner-scan', async (req, res) => {
+  try {
+    const { session, barcode, timestamp } = req.body;
+
+    if (!session || !barcode) {
+      return res.status(400).json({ error: 'Session and barcode are required' });
+    }
+
+    // Store the scanned barcode
+    if (!scannerSessions.has(session)) {
+      scannerSessions.set(session, []);
+    }
+
+    const sessionData = scannerSessions.get(session);
+    sessionData.push({
+      barcode,
+      timestamp,
+      receivedAt: new Date().toISOString()
+    });
+
+    // Keep only last 10 scans per session
+    if (sessionData.length > 10) {
+      sessionData.splice(0, sessionData.length - 10);
+    }
+
+    console.log(`Barcode scanned: ${barcode} for session: ${session}`);
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Barcode received',
+      session,
+      barcode 
+    });
+
+  } catch (error) {
+    console.error('Scanner API error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/scanner-session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const sessionData = scannerSessions.get(sessionId) || [];
+    res.json({ scans: sessionData });
+  } catch (error) {
+    console.error('Scanner session API error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

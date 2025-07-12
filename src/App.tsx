@@ -23,6 +23,7 @@ import AdminPage from "./pages/Admin";
 import ShopPage from "./pages/Shop";
 import SignupPage from "./pages/Signup";
 import GSTFiling from "./pages/GSTFiling";
+import MobileScanner from "./pages/MobileScanner";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/mobile-scanner" element={<MobileScanner />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               
               {/* Cashier routes */}

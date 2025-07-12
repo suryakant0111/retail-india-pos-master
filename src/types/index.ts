@@ -23,9 +23,12 @@ export interface ProductVariant {
 }
 
 export interface CartItem {
-  product: Product;
+  product?: Product; // Optional for custom/manual items
   quantity: number;
   price: number;
+  name?: string; // For custom/manual items
+  unitType?: 'unit' | 'weight' | 'volume';
+  unitLabel?: string;
   variant?: ProductVariant; // Add variant property
   taxAmount?: number; // Add taxAmount property
   totalPrice?: number; // Add totalPrice property
@@ -51,6 +54,8 @@ export interface Product {
   createdAt: Date;
   updatedAt: Date;
   shop_id?: string;
+  unitType?: 'unit' | 'weight' | 'volume'; // 'unit' (pcs), 'weight' (kg/g), 'volume' (L/ml)
+  unitLabel?: string; // e.g., 'kg', 'g', 'L', 'ml', 'pcs'
 }
 
 export interface User {

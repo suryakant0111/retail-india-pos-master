@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useProfile } from '@/hooks/useProfile';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Transaction {
   id: string;
@@ -27,28 +28,38 @@ const Transactions = () => {
   const { profile } = useProfile();
 
   useEffect(() => {
-    // Load transactions from localStorage
-    try {
-      const storedTransactions = localStorage.getItem('transactions');
-      if (storedTransactions) {
-        const parsed = JSON.parse(storedTransactions);
-        // Filter by shop_id if available
-        const filteredByShop = profile?.shop_id
-          ? parsed.filter((tx: any) => tx.shop_id === profile.shop_id)
-          : parsed;
-        // Convert string dates back to Date objects
-        const processedTransactions = filteredByShop.map((tx: any) => ({
-          ...tx,
-          createdAt: new Date(tx.createdAt)
-        }));
-        setTransactions(processedTransactions);
-      } else {
+    // Fetch transactions from Supabase payments table
+    const fetchPayments = async () => {
+      try {
+        let query = supabase.from('payments').select('*');
+        if (profile?.shop_id) {
+          query = query.eq('shop_id', profile.shop_id);
+        }
+        const { data, error } = await query;
+        if (error) {
+          throw error;
+        }
+        if (data) {
+          // Map payments to Transaction interface
+          const processedTransactions = data.map((payment: any) => ({
+            id: payment.id,
+            invoiceId: payment.order_id || '',
+            invoiceNumber: payment.order_id ? payment.order_id.slice(-8) : 'N/A',
+            amount: Number(payment.amount),
+            paymentMethod: payment.method || 'unknown',
+            customer: payment.customer || 'N/A', // If you add customer_id, you can join for name
+            createdAt: new Date(payment.created_at),
+          }));
+          setTransactions(processedTransactions);
+        } else {
+          setTransactions([]);
+        }
+      } catch (error) {
+        console.error('Error loading payments:', error);
         setTransactions([]);
       }
-    } catch (error) {
-      console.error('Error loading transactions:', error);
-      setTransactions([]);
-    }
+    };
+    fetchPayments();
   }, [profile?.shop_id]);
   
   // Filter transactions based on search term and payment method
