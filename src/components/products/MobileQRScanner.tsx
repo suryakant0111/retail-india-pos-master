@@ -206,25 +206,25 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
             <CardContent>
               <div className="text-center space-y-4">
                 {qrCodeUrl ? (
-                  <div className="bg-white p-4 rounded-lg border">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
-                      alt="QR Code"
-                      className="mx-auto"
-                      onError={(e) => {
-                        console.error('QR code generation failed, using fallback');
-                        e.currentTarget.style.display = 'none';
-                        const fallbackDiv = e.currentTarget.nextElementSibling as HTMLElement;
-                        if (fallbackDiv) {
-                          fallbackDiv.style.display = 'block';
-                        }
-                      }}
-                    />
-                    <div className="hidden text-center p-4 bg-gray-100 rounded">
-                      <p className="text-sm font-mono break-all">{qrCodeUrl}</p>
-                      <p className="text-xs text-gray-600 mt-2">Copy this URL to your mobile device</p>
-                    </div>
+                <div className="bg-white p-4 rounded-lg border">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
+                    alt="QR Code"
+                    className="mx-auto"
+                    onError={(e) => {
+                      console.error('QR code generation failed, using fallback');
+                      e.currentTarget.style.display = 'none';
+                      const fallbackDiv = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (fallbackDiv) {
+                        fallbackDiv.style.display = 'block';
+                      }
+                    }}
+                  />
+                  <div className="hidden text-center p-4 bg-gray-100 rounded">
+                    <p className="text-sm font-mono break-all">{qrCodeUrl}</p>
+                    <p className="text-xs text-gray-600 mt-2">Copy this URL to your mobile device</p>
                   </div>
+                </div>
                 ) : (
                   <div className="bg-white p-4 rounded-lg border">
                     <div className="flex items-center justify-center h-48">

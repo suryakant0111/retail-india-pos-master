@@ -190,18 +190,37 @@ const MobileScanner = () => {
 
   const sendBarcodeToServer = async (barcode: string) => {
     if (!sessionId) return;
+    
+    console.log('[MobileScanner] Sending barcode to server:', barcode);
+    console.log('[MobileScanner] Session ID:', sessionId);
+    
     try {
       let backendUrl = 'https://retail-india-pos-master.onrender.com';
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
         backendUrl = 'http://localhost:3001';
       }
-      await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
+      
+      console.log('[MobileScanner] Backend URL:', backendUrl);
+      console.log('[MobileScanner] Request payload:', { barcode, timestamp: new Date().toISOString() });
+      
+      const response = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode, timestamp: new Date().toISOString() })
       });
+      
+      console.log('[MobileScanner] Response status:', response.status);
+      console.log('[MobileScanner] Response ok:', response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[MobileScanner] Server error:', errorText);
+      } else {
+        const responseData = await response.json();
+        console.log('[MobileScanner] Server response:', responseData);
+      }
     } catch (error) {
-      // Ignore
+      console.error('[MobileScanner] Network error:', error);
     }
   };
 

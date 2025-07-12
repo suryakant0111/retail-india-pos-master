@@ -377,7 +377,7 @@ const Products = () => {
       
       if (productData.found) {
         handleBarcodeProductFound(productData);
-      } else {
+    } else {
         toast({
           title: "Product Not Found",
           description: `No product data found for barcode: ${barcode.trim()}. You can still add it manually.`,
