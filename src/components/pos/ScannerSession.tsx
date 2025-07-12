@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useCart } from '@/contexts/CartContext';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
-import { CheckCircle, AlertCircle } from 'lucide-react';
 
 interface ScannerSessionProps {
   sessionId: string;
@@ -19,7 +17,7 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
   const [isPolling, setIsPolling] = useState(false);
   const { toast } = useToast();
 
-  // Poll for new scanned barcodes
+  // Simple polling for now
   useEffect(() => {
     if (!sessionId) return;
 
@@ -37,7 +35,6 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
             if (latestScan.barcode !== lastScannedBarcode) {
               setLastScannedBarcode(latestScan.barcode);
               
-              // Find product by barcode
               const product = products.find(p => 
                 p.barcode && p.barcode.toString() === latestScan.barcode
               );
@@ -49,12 +46,6 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
                   description: `${product.name} added to cart`,
                   variant: "success",
                 });
-              } else {
-                toast({
-                  title: "Product Not Found",
-                  description: `No product found with barcode: ${latestScan.barcode}`,
-                  variant: "destructive",
-                });
               }
             }
           }
@@ -62,7 +53,7 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
       } catch (error) {
         console.error('Error polling scanner session:', error);
       }
-    }, 1000);
+    }, 2000);
 
     return () => {
       clearInterval(interval);
@@ -75,11 +66,7 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
   return (
     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
       <div className="flex items-center gap-2 mb-2">
-        {isPolling ? (
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-        ) : (
-          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-        )}
+        <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
         <span className="text-sm font-medium text-blue-800">
           Mobile Scanner Active
         </span>
