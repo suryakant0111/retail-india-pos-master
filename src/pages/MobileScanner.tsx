@@ -33,7 +33,13 @@ const MobileScanner = () => {
 
   const connectToSession = async () => {
     try {
-      const response = await fetch(`/api/mobile-scanner/connect/${sessionId}`, {
+      // Use backend URL
+      let backendUrl = 'https://retail-india-pos-master.onrender.com';
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        backendUrl = 'http://localhost:3001';
+      }
+      
+      const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connected: true })
@@ -161,7 +167,13 @@ const MobileScanner = () => {
     if (!sessionId) return;
     
     try {
-      const response = await fetch(`/api/mobile-scanner/scan/${sessionId}`, {
+      // Use backend URL
+      let backendUrl = 'https://retail-india-pos-master.onrender.com';
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        backendUrl = 'http://localhost:3001';
+      }
+      
+      const response = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

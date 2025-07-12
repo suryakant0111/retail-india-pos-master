@@ -65,7 +65,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   finalTotal = Math.max(0, finalTotal);
   
   const addItem = (product: Product, quantity: number, variant?: ProductVariant) => {
+    console.log('[CartContext] addItem called with:', { product, quantity, variant });
+    console.log('[CartContext] Current items before adding:', items);
+    
     const price = variant ? variant.price : product.price;
+    console.log('[CartContext] Calculated price:', price);
+    
     // No per-product tax
     // Check if this product/variant is already in cart
     const existingItemIndex = items.findIndex(item => {
@@ -77,8 +82,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return item.product.id === product.id && !item.variant;
     });
     
+    console.log('[CartContext] Existing item index:', existingItemIndex);
+    
     if (existingItemIndex >= 0) {
       // Update existing item
+      console.log('[CartContext] Updating existing item at index:', existingItemIndex);
       const updatedItems = [...items];
       const existingItem = updatedItems[existingItemIndex];
       updatedItems[existingItemIndex] = {
@@ -87,9 +95,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         totalPrice: (existingItem.price * (existingItem.quantity + quantity))
       };
       setItems(updatedItems);
+      console.log('[CartContext] Updated items:', updatedItems);
     } else {
       // Add new item
-      setItems([...items, {
+      console.log('[CartContext] Adding new item to cart');
+      const newItem = {
         product,
         variant,
         quantity,
@@ -98,7 +108,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Pass through unitLabel and unitType for manual/custom items
         unitLabel: product.unitLabel,
         unitType: product.unitType,
-      }]);
+      };
+      console.log('[CartContext] New item to add:', newItem);
+      setItems([...items, newItem]);
+      console.log('[CartContext] Items after adding new item:', [...items, newItem]);
     }
     
     toast({

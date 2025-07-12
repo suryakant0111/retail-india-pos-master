@@ -173,7 +173,11 @@ const POS = () => {
   });
   
   const handleQuickAddProduct = (product: Product) => {
+    console.log('[POS] handleQuickAddProduct called with product:', product);
+    console.log('[POS] Current cart items before adding:', items);
+    
     if (product.stock <= 0) {
+      console.log('[POS] Product out of stock:', product.name);
       toast({
         title: "Out of Stock",
         description: `${product.name} is out of stock`,
@@ -181,6 +185,7 @@ const POS = () => {
       });
       return;
     }
+    
     // Prompt for custom tax rate
     let taxRate = 0;
     const userInput = window.prompt(`Enter GST/Tax Rate (%) for ${product.name}:`, product.tax !== undefined ? product.tax.toString() : '0');
@@ -192,8 +197,16 @@ const POS = () => {
     } else if (product.tax !== undefined) {
       taxRate = product.tax;
     }
+    
+    console.log('[POS] Setting tax rate to:', taxRate);
     setTaxRate(taxRate);
+    
+    console.log('[POS] Calling addItem with product:', product, 'quantity: 1');
     addItem(product, 1);
+    
+    // Note: items won't be updated immediately due to React state updates
+    console.log('[POS] Cart items after calling addItem (may not be updated yet):', items);
+    
     toast({
       title: "Product Added",
       description: `${product.name} has been added to cart with ${taxRate}% GST/Tax`,

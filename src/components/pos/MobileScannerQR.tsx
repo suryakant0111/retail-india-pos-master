@@ -119,7 +119,8 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
           backendUrl = 'http://localhost:3001';
         }
         
-        const response = await fetch(`${backendUrl}/scanner-session/${sessionId}`);
+        // Use the correct mobile scanner endpoint
+        const response = await fetch(`${backendUrl}/api/mobile-scanner/status/${sessionId}`);
         
         if (!response.ok) {
           console.warn('[MobileScannerQR] Polling failed:', response.status);
@@ -127,11 +128,11 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
         }
         
         const data = await response.json();
-        const scans = data.scans || [];
+        console.log('[MobileScannerQR] Polling response:', data);
         
-        if (scans.length > 0) {
-          const latestScan = scans[scans.length - 1];
-          const barcode = latestScan.barcode;
+        // Check if there's new scanned data
+        if (data.scannedData && data.scannedData.barcode) {
+          const barcode = data.scannedData.barcode;
           
           console.log('[MobileScannerQR] New scan detected:', barcode);
           
