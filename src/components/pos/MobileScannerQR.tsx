@@ -135,6 +135,9 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
           const barcode = data.scannedData.barcode;
           
           console.log('[MobileScannerQR] New scan detected:', barcode);
+          // Log all product barcodes and the scanned barcode for debugging
+          console.log('[MobileScannerQR] All product barcodes:', products.map(p => `[${typeof p.barcode}] ${JSON.stringify(p.barcode)}`));
+          console.log('[MobileScannerQR] Comparing to scanned barcode:', `[${typeof barcode}] ${JSON.stringify(barcode)}`);
           
           // Prevent duplicate processing
           if (processedBarcodes.has(barcode)) {
@@ -142,8 +145,10 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
             return;
           }
           
-          // Find product by barcode
-          const product = products.find(p => p.barcode && p.barcode.toString() === barcode);
+          // Robust barcode comparison
+          const product = products.find(p =>
+            p.barcode && p.barcode.toString().trim() === barcode.toString().trim()
+          );
           
           if (product) {
             console.log('[MobileScannerQR] Product found:', product.name);
