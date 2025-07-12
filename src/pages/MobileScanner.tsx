@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, Loader2, AlertCircle, Smartphone } from 'lucide-react';
 import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
-import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/browser';
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
@@ -108,34 +108,50 @@ const MobileScanner = () => {
 
   const startZXingDetection = () => {
     console.log('[MobileScanner] Starting ZXing detection...');
+    
+    // Clean up any existing reader
     if (zxingReaderRef.current) {
       console.log('[MobileScanner] Stopping previous ZXing reader');
-      zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
-    }
-    zxingReaderRef.current = new BrowserMultiFormatReader();
-    console.log('[MobileScanner] ZXing reader created');
-    
-    zxingReaderRef.current.decodeFromVideoDevice(
-      undefined,
-      videoRef.current!,
-      async (result, err) => {
-        if (result) {
-          console.log('[MobileScanner] ZXing detected barcode:', result.getText());
-          await sendBarcodeToServer(result.getText());
-          setLastScanned(result.getText());
-          toast({
-            title: "Barcode Scanned! (ZXing)",
-            description: `Found: ${result.getText()}`,
-            variant: "default"
-          });
-        }
-        if (err && !err.message?.includes('No MultiFormat Readers')) {
-          console.error('[MobileScanner] ZXing error:', err);
-          setError('ZXing error: ' + err.message);
-        }
+      try {
+        zxingReaderRef.current.reset();
+      } catch (error) {
+        console.log('[MobileScanner] Error stopping previous reader:', error);
       }
-    );
-    console.log('[MobileScanner] ZXing detection started');
+    }
+    
+    try {
+      zxingReaderRef.current = new BrowserMultiFormatReader();
+      console.log('[MobileScanner] ZXing reader created');
+      
+      console.log('[MobileScanner] Starting ZXing video decoding...');
+      zxingReaderRef.current.decodeFromVideoDevice(
+        undefined, // Use default camera
+        videoRef.current!,
+        async (result, err) => {
+          if (result) {
+            console.log('[MobileScanner] ZXing detected barcode:', result.getText());
+            await sendBarcodeToServer(result.getText());
+            setLastScanned(result.getText());
+            toast({
+              title: "Barcode Scanned! (ZXing)",
+              description: `Found: ${result.getText()}`,
+              variant: "default"
+            });
+          }
+          if (err) {
+            // Only log errors that aren't "No MultiFormat Readers" (which is normal)
+            if (!err.message?.includes('No MultiFormat Readers')) {
+              console.error('[MobileScanner] ZXing error:', err);
+              setError('ZXing error: ' + err.message);
+            }
+          }
+        }
+      );
+      console.log('[MobileScanner] ZXing detection started successfully');
+    } catch (error) {
+      console.error('[MobileScanner] Error creating ZXing reader:', error);
+      setError('Failed to initialize barcode scanner: ' + error);
+    }
   };
 
   const stopCamera = () => {
@@ -392,6 +408,38 @@ const MobileScanner = () => {
                   Send
                 </Button>
               </div>
+              
+              {/* Test Camera Button */}
+              {scanning && (
+                <div className="space-y-2">
+                  <Button 
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      console.log('[MobileScanner] Testing camera access...');
+                      console.log('[MobileScanner] Video element:', videoRef.current);
+                      console.log('[MobileScanner] Video ready state:', videoRef.current?.readyState);
+                      console.log('[MobileScanner] Video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                      console.log('[MobileScanner] Stream tracks:', streamRef.current?.getTracks().map(t => t.kind));
+                      
+                      // Test ZXing directly
+                      if (zxingReaderRef.current) {
+                        console.log('[MobileScanner] ZXing reader exists');
+                      } else {
+                        console.log('[MobileScanner] ZXing reader not created');
+                      }
+                      
+                      // Test BarcodeDetector
+                      console.log('[MobileScanner] BarcodeDetector supported:', barcodeDetector.isBarcodeDetectionSupported());
+                      console.log('[MobileScanner] Detection supported:', detectionSupported);
+                      console.log('[MobileScanner] Using polyfill:', usingPolyfill);
+                    }}
+                  >
+                    Test Camera
+                  </Button>
+                  <p className="text-xs text-gray-500">Click to check camera status in console</p>
+                </div>
+              )}
               
               {!detectionSupported && (
                 <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs">
