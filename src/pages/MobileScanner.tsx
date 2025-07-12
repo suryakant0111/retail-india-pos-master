@@ -216,6 +216,14 @@ const MobileScanner = () => {
     });
   };
 
+  // Restore: Ensure mobile connects to backend session on load
+  useEffect(() => {
+    if (sessionId) {
+      connectToSession();
+    }
+    // eslint-disable-next-line
+  }, [sessionId]);
+
   if (!sessionId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
