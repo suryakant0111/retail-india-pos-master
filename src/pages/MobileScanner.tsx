@@ -8,42 +8,49 @@ import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 
-const SCAN_COOLDOWN = 3000; // 3 seconds
+const SCAN_COOLDOWN = 2000; // 2 seconds to prevent duplicate scans
+const VIDEO_CONSTRAINTS = {
+  video: {
+    facingMode: 'environment',
+    width: { ideal: 640, max: 1280 },
+    height: { ideal: 480, max: 720 },
+    frameRate: { ideal: 15, max: 30 },
+    aspectRatio: { ideal: 4/3 }
+  }
+};
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session');
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [lastScanned, setLastScanned] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [lastScanned, setLastScanned] = useState('');
+  const [error, setError] = useState(null);
   const [detectionSupported, setDetectionSupported] = useState(false);
   const [usingPolyfill, setUsingPolyfill] = useState(false);
-  const [performanceMode, setPerformanceMode] = useState(true); // Default to performance mode
   const [scanningInProgress, setScanningInProgress] = useState(false);
-  const [lastScanTime, setLastScanTime] = useState(0);
-  const [processedBarcodes, setProcessedBarcodes] = useState<Set<string>>(new Set());
-  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const detectionFrameRef = useRef<number | null>(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const detectionFrameRef = useRef(null);
+  const zxingReaderRef = useRef(null);
+  const processedBarcodes = useRef(new Set());
+  const lastScanTime = useRef(0);
   const { toast } = useToast();
 
   useEffect(() => {
+    setDetectionSupported(barcodeDetector.isBarcodeDetectionSupported());
+    setUsingPolyfill(!barcodeDetector.isBarcodeDetectionSupported());
     return () => {
       stopCamera();
-      if (detectionFrameRef.current) {
-        cancelAnimationFrame(detectionFrameRef.current);
-      }
+      if (detectionFrameRef.current) cancelAnimationFrame(detectionFrameRef.current);
     };
   }, []);
 
   const connectToSession = async () => {
     try {
-      let backendUrl = 'https://retail-india-pos-master.onrender.com';
-      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
-        backendUrl = 'http://localhost:3001';
-      }
+      const backendUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+        ? 'http://localhost:3001'
+        : 'https://retail-india-pos-master.onrender.com';
       const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -56,10 +63,17 @@ const MobileScanner = () => {
           description: "You're now connected to the main application",
           variant: "default"
         });
+      } else {
+        throw new Error('Connection failed');
       }
     } catch (error) {
       console.error('Failed to connect:', error);
       setError('Failed to connect to main application');
+      toast({
+        title: "Connection Error",
+        description: "Could not connect to the main application",
+        variant: "destructive"
+      });
     }
   };
 
@@ -67,35 +81,17 @@ const MobileScanner = () => {
     try {
       setScanning(true);
       setError(null);
-      // Lowered video resolution and frame rate for best performance
-      const constraints = {
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 320, max: 640 },
-          height: { ideal: 240, max: 480 },
-          frameRate: { ideal: 10, max: 15 },
-          aspectRatio: { ideal: 4/3 }
-        }
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
-        videoRef.current.playsInline = true;
-        videoRef.current.muted = true;
-        videoRef.current.autoplay = true;
         videoRef.current.onloadedmetadata = () => {
-          startBarcodeDetection();
+          videoRef.current.play().then(() => startBarcodeDetection());
         };
-        videoRef.current.onerror = (error) => {
-          setError('Video playback error');
-        };
-        const isSupported = barcodeDetector.isBarcodeDetectionSupported();
-        setDetectionSupported(isSupported);
-        setUsingPolyfill(!isSupported);
       }
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to access camera: ' + err.message);
+      setScanning(false);
       toast({
         title: "Camera Error",
         description: "Please allow camera access to scan barcodes",
@@ -115,118 +111,83 @@ const MobileScanner = () => {
       detectionFrameRef.current = null;
     }
     if (zxingReaderRef.current) {
-      try {
-        zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
-      } catch {}
+      zxingReaderRef.current.reset();
       zxingReaderRef.current = null;
     }
   };
 
-  // Main detection loop using requestAnimationFrame
+  const startBarcodeDetection = () => {
+    processedBarcodes.current.clear();
+    lastScanTime.current = 0;
+    if (detectionFrameRef.current) cancelAnimationFrame(detectionFrameRef.current);
+    barcodeDetectionLoop();
+  };
+
+  const handleBarcodeResult = async (barcode) => {
+    processedBarcodes.current.add(barcode);
+    setLastScanned(barcode);
+    lastScanTime.current = Date.now();
+    await sendBarcodeToServer(barcode);
+    toast({
+      title: "Barcode Scanned!",
+      description: `Found: ${barcode}`,
+      variant: "default"
+    });
+  };
+
   const barcodeDetectionLoop = async () => {
     if (!videoRef.current || !scanning) return;
-    if (scanningInProgress) {
+    if (scanningInProgress || Date.now() - lastScanTime.current < SCAN_COOLDOWN) {
       detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
       return;
     }
-    if (Date.now() - lastScanTime < SCAN_COOLDOWN) {
-      detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
-      return;
-    }
+
     setScanningInProgress(true);
-    if (detectionSupported) {
-      // Native BarcodeDetector
-      const result = await barcodeDetector.detectFromVideo(videoRef.current);
-      if (result.success && result.barcode) {
-        if (!processedBarcodes.has(result.barcode)) {
-          setProcessedBarcodes(prev => new Set([...prev, result.barcode!]));
-          setLastScanTime(Date.now());
-          setLastScanned(result.barcode);
-          await sendBarcodeToServer(result.barcode);
-          // Only show toast if not already processed
-          toast({
-            title: "Barcode Scanned!",
-            description: `Found: ${result.barcode}`,
-            variant: "default"
-          });
-        }
-      }
-    } else {
-      // ZXing fallback
-      if (!zxingReaderRef.current) {
-        zxingReaderRef.current = new BrowserMultiFormatReader();
-      }
-      try {
-        const result = await zxingReaderRef.current.decodeOnceFromVideoElement(videoRef.current!);
-        if (result && result.getText()) {
-          if (!processedBarcodes.has(result.getText())) {
-            setProcessedBarcodes(prev => new Set([...prev, result.getText()]));
-            setLastScanTime(Date.now());
-            setLastScanned(result.getText());
-            await sendBarcodeToServer(result.getText());
-            // Only show toast if not already processed
-            toast({
-              title: "Barcode Scanned! (ZXing)",
-              description: `Found: ${result.getText()}`,
-              variant: "default"
-            });
-          }
-        }
-      } catch (err) {
-        // Ignore errors
-      }
-    }
-    setScanningInProgress(false);
-    detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
-  };
-
-  const startBarcodeDetection = () => {
-    setProcessedBarcodes(new Set());
-    setLastScanTime(0);
-    setScanningInProgress(false);
-    if (detectionFrameRef.current) {
-      cancelAnimationFrame(detectionFrameRef.current);
-    }
-    detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
-  };
-
-  const sendBarcodeToServer = async (barcode: string) => {
-    if (!sessionId) return;
-    
-    console.log('[MobileScanner] Sending barcode to server:', barcode);
-    console.log('[MobileScanner] Session ID:', sessionId);
-    
     try {
-      let backendUrl = 'https://retail-india-pos-master.onrender.com';
-      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
-        backendUrl = 'http://localhost:3001';
+      if (detectionSupported) {
+        const result = await barcodeDetector.detectFromVideo(videoRef.current);
+        if (result.success && result.barcode && !processedBarcodes.current.has(result.barcode)) {
+          handleBarcodeResult(result.barcode);
+        }
+      } else if (usingPolyfill) {
+        if (!zxingReaderRef.current) zxingReaderRef.current = new BrowserMultiFormatReader();
+        try {
+          const result = await zxingReaderRef.current.decodeOnceFromVideoElement(videoRef.current);
+          if (result && result.getText() && !processedBarcodes.current.has(result.getText())) {
+            handleBarcodeResult(result.getText());
+          }
+        } catch (err) {
+          console.error('ZXing error:', err);
+        }
       }
-      
-      console.log('[MobileScanner] Backend URL:', backendUrl);
-      console.log('[MobileScanner] Request payload:', { barcode, timestamp: new Date().toISOString() });
-      
+    } catch (err) {
+      console.error('Detection error:', err);
+    } finally {
+      setScanningInProgress(false);
+      detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
+    }
+  };
+
+  const sendBarcodeToServer = async (barcode) => {
+    if (!sessionId) return;
+    try {
+      const backendUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+        ? 'http://localhost:3001'
+        : 'https://retail-india-pos-master.onrender.com';
       const response = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode, timestamp: new Date().toISOString() })
       });
-      
-      console.log('[MobileScanner] Response status:', response.status);
-      console.log('[MobileScanner] Response ok:', response.ok);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[MobileScanner] Server error:', errorText);
-      } else {
-        const responseData = await response.json();
-        console.log('[MobileScanner] Server response:', responseData);
+        console.error('Server error:', await response.text());
       }
     } catch (error) {
-      console.error('[MobileScanner] Network error:', error);
+      console.error('Network error:', error);
     }
   };
 
-  const handleManualBarcode = async (barcode: string) => {
+  const handleManualBarcode = async (barcode) => {
     if (!barcode.trim()) return;
     await sendBarcodeToServer(barcode.trim());
     setLastScanned(barcode.trim());
@@ -237,28 +198,22 @@ const MobileScanner = () => {
     });
   };
 
-  // Restore: Ensure mobile connects to backend session on load
   useEffect(() => {
-    if (sessionId) {
-      connectToSession();
-    }
-    // eslint-disable-next-line
+    if (sessionId) connectToSession();
   }, [sessionId]);
 
   if (!sessionId) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
               Invalid Session
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              No session ID provided. Please scan the QR code from the main application.
-            </p>
+            <p className="text-gray-600">No session ID provided. Please scan the QR code from the main application.</p>
           </CardContent>
         </Card>
       </div>
@@ -266,139 +221,108 @@ const MobileScanner = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-md mx-auto space-y-4">
         {/* Header */}
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Smartphone className="h-5 w-5 text-blue-600" />
               Mobile Barcode Scanner
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center gap-2">
                 {connected ? (
-                  <>
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span className="text-sm text-green-700">Connected to main app</span>
-                  </>
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="text-sm">Connected to main app</span>
+                  </div>
                 ) : (
-                  <>
-                    <Wifi className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Connecting...</span>
-                  </>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Wifi className="h-4 w-4 animate-pulse" />
+                    <span className="text-sm">Connecting...</span>
+                  </div>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground">
-                Session: {sessionId.substring(0, 8)}...
-              </div>
+              <p className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}...</p>
             </div>
           </CardContent>
         </Card>
         {/* Camera Scanner */}
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-lg">Camera Scanner</CardTitle>
+            <CardTitle className="text-lg font-semibold">Camera Scanner</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="relative">
+              <div className="relative rounded-lg overflow-hidden bg-black">
                 <video
                   ref={videoRef}
-                  className="w-full h-64 bg-black rounded-lg object-cover"
+                  className="w-full h-64 object-cover"
                   autoPlay
                   playsInline
                   muted
                 />
-                {scanning && (
+                {scanning ? (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="border-2 border-primary rounded-lg p-4">
-                      <Scan className="h-8 w-8 text-primary animate-pulse" />
+                    <div className="border-4 border-blue-500 border-opacity-50 rounded-lg p-4">
+                      <Scan className="h-8 w-8 text-blue-500 animate-pulse" />
                     </div>
                   </div>
-                )}
-                {!scanning && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
                     <div className="text-center">
                       <Camera className="h-12 w-12 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-600">Camera not active</p>
                     </div>
                   </div>
                 )}
-                {/* Scanning Status Indicator */}
                 {scanning && (
                   <div className="absolute top-2 left-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
-                    {scanningInProgress ? 'Processing...' : 'Ready to scan'}
+                    {scanningInProgress ? 'Scanning...' : 'Ready to scan'}
                   </div>
                 )}
               </div>
-              <div className="flex gap-2">
-                {!scanning ? (
-                  <Button onClick={startCamera} className="flex-1">
+              <Button
+                onClick={scanning ? stopCamera : startCamera}
+                className="w-full bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                {scanning ? (
+                  'Stop Camera'
+                ) : (
+                  <>
                     <Camera className="mr-2 h-4 w-4" />
                     Start Camera
-                  </Button>
-                ) : (
-                  <Button onClick={stopCamera} variant="outline" className="flex-1">
-                    Stop Camera
-                  </Button>
+                  </>
                 )}
-              </div>
-              {/* Performance Mode Toggle */}
+              </Button>
               {scanning && (
-                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Performance Mode</span>
-                    <span className="text-xs text-gray-500">
-                      {performanceMode ? 'Smooth camera (slower detection)' : 'Fast detection (may lag)'}
-                    </span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant={performanceMode ? "default" : "outline"}
-                    onClick={() => {
-                      setPerformanceMode(!performanceMode);
-                      // Restart detection with new settings
-                      if (detectionSupported) {
-                        startBarcodeDetection();
-                      }
-                    }}
-                  >
-                    {performanceMode ? 'Performance' : 'Speed'}
-                  </Button>
-                </div>
-              )}
-              {detectionSupported && scanning && (
                 <div className="text-center">
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge className="bg-blue-100 text-blue-800">
                     <Scan className="mr-1 h-3 w-3" />
-                    Auto-detection active
+                    {detectionSupported ? 'Auto-detection active' : 'ZXing Polyfill Active'}
                   </Badge>
-                </div>
-              )}
-              {!detectionSupported && usingPolyfill && scanning && (
-                <div className="text-center mt-2">
-                  <Badge variant="secondary" className="text-xs bg-yellow-200 text-yellow-800">
-                    ZXing Polyfill Active
-                  </Badge>
-                  <p className="text-xs text-yellow-700 mt-1">Using fallback barcode scanner for unsupported browsers.</p>
-                </div>
-              )}
-              {!detectionSupported && !usingPolyfill && scanning && (
-                <div className="text-center mt-2">
-                  <Badge variant="destructive" className="text-xs">No Barcode Scanning Available</Badge>
-                  <p className="text-xs text-red-700 mt-1">Barcode scanning is not supported on this device/browser. Use manual entry below.</p>
+                  {!detectionSupported && usingPolyfill && (
+                    <p className="text-xs text-yellow-600 mt-2">
+                      Using fallback scanner for unsupported browsers
+                    </p>
+                  )}
+                  {!detectionSupported && !usingPolyfill && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Barcode scanning not supported. Use manual entry.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
         {/* Manual Entry */}
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-lg">Manual Entry</CardTitle>
+            <CardTitle className="text-lg font-semibold">Manual Entry</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -406,7 +330,7 @@ const MobileScanner = () => {
                 <input
                   type="text"
                   placeholder="Enter barcode manually..."
-                  className="flex-1 px-3 py-2 border rounded-md text-sm"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       handleManualBarcode(e.currentTarget.value);
@@ -414,10 +338,11 @@ const MobileScanner = () => {
                     }
                   }}
                 />
-                <Button 
+                <Button
                   size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
                   onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const input = e.currentTarget.previousElementSibling;
                     handleManualBarcode(input.value);
                     input.value = '';
                   }}
@@ -425,34 +350,11 @@ const MobileScanner = () => {
                   Send
                 </Button>
               </div>
-              {/* Test Camera Button */}
-              {scanning && (
-                <div className="space-y-2">
-                  <Button 
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      if (videoRef.current && videoRef.current.videoWidth > 0) {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        if (ctx) {
-                          canvas.width = videoRef.current.videoWidth;
-                          canvas.height = videoRef.current.videoHeight;
-                          ctx.drawImage(videoRef.current, 0, 0);
-                        }
-                      }
-                    }}
-                  >
-                    Test Camera
-                  </Button>
-                  <p className="text-xs text-gray-500">Click to check camera status in console</p>
-                </div>
-              )}
               {!detectionSupported && (
-                <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
                   <div className="flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3 text-amber-600" />
-                    <span className="text-amber-700">Use manual entry - auto-detection not supported</span>
+                    <AlertCircle className="h-3 w-3" />
+                    <span>Use manual entry - auto-detection not supported</span>
                   </div>
                 </div>
               )}
@@ -461,9 +363,9 @@ const MobileScanner = () => {
         </Card>
         {/* Last Scanned */}
         {lastScanned && (
-          <Card>
+          <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-lg">Last Scanned</CardTitle>
+              <CardTitle className="text-lg font-semibold">Last Scanned</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -480,7 +382,7 @@ const MobileScanner = () => {
         )}
         {/* Error Display */}
         {error && (
-          <Card>
+          <Card className="shadow-lg">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <AlertCircle className="h-4 w-4 text-red-500" />
@@ -490,26 +392,26 @@ const MobileScanner = () => {
           </Card>
         )}
         {/* Instructions */}
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-lg">How to Use</CardTitle>
+            <CardTitle className="text-lg font-semibold">How to Use</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm text-gray-600">
               <div className="flex items-start gap-2">
-                <Badge variant="secondary" className="text-xs">1</Badge>
+                <Badge className="bg-blue-100 text-blue-800">1</Badge>
                 <span>Click "Start Camera" to begin scanning</span>
               </div>
               <div className="flex items-start gap-2">
-                <Badge variant="secondary" className="text-xs">2</Badge>
+                <Badge className="bg-blue-100 text-blue-800">2</Badge>
                 <span>Point camera at product barcodes</span>
               </div>
               <div className="flex items-start gap-2">
-                <Badge variant="secondary" className="text-xs">3</Badge>
+                <Badge className="bg-blue-100 text-blue-800">3</Badge>
                 <span>Scanned barcodes are sent to main app automatically</span>
               </div>
               <div className="flex items-start gap-2">
-                <Badge variant="secondary" className="text-xs">4</Badge>
+                <Badge className="bg-blue-100 text-blue-800">4</Badge>
                 <span>Or use manual entry for testing</span>
               </div>
             </div>
@@ -520,4 +422,4 @@ const MobileScanner = () => {
   );
 };
 
-export default MobileScanner; 
+export default MobileScanner;
