@@ -8,10 +8,11 @@ import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 
+const SCAN_COOLDOWN = 3000; // 3 seconds
+
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session');
-  
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [lastScanned, setLastScanned] = useState<string>('');
@@ -19,33 +20,35 @@ const MobileScanner = () => {
   const [detectionSupported, setDetectionSupported] = useState(false);
   const [usingPolyfill, setUsingPolyfill] = useState(false);
   const [performanceMode, setPerformanceMode] = useState(true); // Default to performance mode
+  const [scanningInProgress, setScanningInProgress] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState(0);
+  const [processedBarcodes, setProcessedBarcodes] = useState<Set<string>>(new Set());
   const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
-  
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const detectionFrameRef = useRef<number | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (sessionId) {
-      connectToSession();
-    }
-  }, [sessionId]);
+    return () => {
+      stopCamera();
+      if (detectionFrameRef.current) {
+        cancelAnimationFrame(detectionFrameRef.current);
+      }
+    };
+  }, []);
 
   const connectToSession = async () => {
     try {
-      // Use backend URL
       let backendUrl = 'https://retail-india-pos-master.onrender.com';
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
         backendUrl = 'http://localhost:3001';
       }
-      
       const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connected: true })
       });
-      
       if (response.ok) {
         setConnected(true);
         toast({
@@ -62,67 +65,36 @@ const MobileScanner = () => {
 
   const startCamera = async () => {
     try {
-      console.log('[MobileScanner] Starting camera...');
       setScanning(true);
       setError(null);
-      
-      // Request camera with optimized constraints for mobile performance
+      // Lowered video resolution and frame rate for best performance
       const constraints = {
         video: {
-          facingMode: 'environment', // Use back camera
-          width: { ideal: 640, max: 1280 }, // Lower resolution for better performance
-          height: { ideal: 480, max: 720 },
-          frameRate: { ideal: 15, max: 30 }, // Lower frame rate for better performance
+          facingMode: 'environment',
+          width: { ideal: 320, max: 640 },
+          height: { ideal: 240, max: 480 },
+          frameRate: { ideal: 10, max: 15 },
           aspectRatio: { ideal: 4/3 }
         }
       };
-      
-      console.log('[MobileScanner] Requesting camera with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      console.log('[MobileScanner] Camera stream obtained:', stream);
-      console.log('[MobileScanner] Stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
-        
-        // Optimize video element for performance
         videoRef.current.playsInline = true;
         videoRef.current.muted = true;
         videoRef.current.autoplay = true;
-        
-        // Wait for video to be ready
         videoRef.current.onloadedmetadata = () => {
-          console.log('[MobileScanner] Video metadata loaded');
-          console.log('[MobileScanner] Video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
-          
-          // Start barcode detection after video is ready
           startBarcodeDetection();
         };
-        
         videoRef.current.onerror = (error) => {
-          console.error('[MobileScanner] Video error:', error);
           setError('Video playback error');
         };
-        
-        // Check barcode detection support
-        console.log('[MobileScanner] Checking barcode detection support...');
         const isSupported = barcodeDetector.isBarcodeDetectionSupported();
-        console.log('[MobileScanner] BarcodeDetector supported:', isSupported);
-        
-        if (isSupported) {
-          console.log('[MobileScanner] Using native BarcodeDetector');
-          setDetectionSupported(true);
-          setUsingPolyfill(false);
-        } else {
-          console.log('[MobileScanner] Using ZXing polyfill');
-          setDetectionSupported(false);
-          setUsingPolyfill(true);
-        }
+        setDetectionSupported(isSupported);
+        setUsingPolyfill(!isSupported);
       }
     } catch (err: any) {
-      console.error('[MobileScanner] Camera error:', err);
       setError('Failed to access camera: ' + err.message);
       toast({
         title: "Camera Error",
@@ -132,150 +104,109 @@ const MobileScanner = () => {
     }
   };
 
-  const startZXingDetection = () => {
-    console.log('[MobileScanner] Starting ZXing detection...');
-    
-    // Clean up any existing reader
+  const stopCamera = () => {
+    setScanning(false);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (detectionFrameRef.current) {
+      cancelAnimationFrame(detectionFrameRef.current);
+      detectionFrameRef.current = null;
+    }
     if (zxingReaderRef.current) {
-      console.log('[MobileScanner] Stopping previous ZXing reader');
       try {
         zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
-      } catch (error) {
-        console.log('[MobileScanner] Error stopping previous reader:', error);
-      }
+      } catch {}
+      zxingReaderRef.current = null;
     }
-    
-    try {
-      zxingReaderRef.current = new BrowserMultiFormatReader();
-      console.log('[MobileScanner] ZXing reader created');
-      
-      console.log('[MobileScanner] Starting ZXing video decoding...');
-      zxingReaderRef.current.decodeFromVideoDevice(
-        undefined, // Use default camera
-        videoRef.current!,
-        async (result, err) => {
-          if (result) {
-            console.log('[MobileScanner] ZXing detected barcode:', result.getText());
-            await sendBarcodeToServer(result.getText());
+  };
+
+  // Main detection loop using requestAnimationFrame
+  const barcodeDetectionLoop = async () => {
+    if (!videoRef.current || !scanning) return;
+    if (scanningInProgress) {
+      detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
+      return;
+    }
+    if (Date.now() - lastScanTime < SCAN_COOLDOWN) {
+      detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
+      return;
+    }
+    setScanningInProgress(true);
+    if (detectionSupported) {
+      // Native BarcodeDetector
+      const result = await barcodeDetector.detectFromVideo(videoRef.current);
+      if (result.success && result.barcode) {
+        if (!processedBarcodes.has(result.barcode)) {
+          setProcessedBarcodes(prev => new Set([...prev, result.barcode!]));
+          setLastScanTime(Date.now());
+          setLastScanned(result.barcode);
+          await sendBarcodeToServer(result.barcode);
+          toast({
+            title: "Barcode Scanned!",
+            description: `Found: ${result.barcode}`,
+            variant: "default"
+          });
+        }
+      }
+    } else {
+      // ZXing fallback
+      if (!zxingReaderRef.current) {
+        zxingReaderRef.current = new BrowserMultiFormatReader();
+      }
+      try {
+        const result = await zxingReaderRef.current.decodeOnceFromVideoElement(videoRef.current!);
+        if (result && result.getText()) {
+          if (!processedBarcodes.has(result.getText())) {
+            setProcessedBarcodes(prev => new Set([...prev, result.getText()]));
+            setLastScanTime(Date.now());
             setLastScanned(result.getText());
+            await sendBarcodeToServer(result.getText());
             toast({
               title: "Barcode Scanned! (ZXing)",
               description: `Found: ${result.getText()}`,
               variant: "default"
             });
           }
-          if (err) {
-            // Only log errors that aren't "No MultiFormat Readers" (which is normal)
-            if (!err.message?.includes('No MultiFormat Readers')) {
-              console.error('[MobileScanner] ZXing error:', err);
-              // Don't set error for ZXing errors as they're common
-            }
-          }
         }
-      );
-      console.log('[MobileScanner] ZXing detection started successfully');
-    } catch (error) {
-      console.error('[MobileScanner] Error creating ZXing reader:', error);
-      // Don't set error for ZXing initialization failures
+      } catch (err) {
+        // Ignore errors
+      }
     }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    if (zxingReaderRef.current) {
-      zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
-      zxingReaderRef.current = null;
-    }
-    setScanning(false);
+    setScanningInProgress(false);
+    detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
   };
 
   const startBarcodeDetection = () => {
-    console.log('[MobileScanner] Starting barcode detection...');
-    
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
+    setProcessedBarcodes(new Set());
+    setLastScanTime(0);
+    setScanningInProgress(false);
+    if (detectionFrameRef.current) {
+      cancelAnimationFrame(detectionFrameRef.current);
     }
-    
-    if (detectionSupported) {
-      // Use native BarcodeDetector with performance-based intervals
-      console.log('[MobileScanner] Using native BarcodeDetector');
-      const interval = performanceMode ? 4000 : 2000; // 4 seconds in performance mode, 2 seconds in speed mode
-      console.log('[MobileScanner] Detection interval:', interval, 'ms');
-      
-      detectionIntervalRef.current = setInterval(async () => {
-        if (videoRef.current && scanning && videoRef.current.readyState >= 2) {
-          try {
-            console.log('[MobileScanner] Attempting native barcode detection...');
-            const result = await barcodeDetector.detectFromVideo(videoRef.current);
-            console.log('[MobileScanner] Native detection result:', result);
-            
-            if (result.success && result.barcode) {
-              console.log('[MobileScanner] Native detector found barcode:', result.barcode);
-              await sendBarcodeToServer(result.barcode);
-              setLastScanned(result.barcode);
-              toast({
-                title: "Barcode Scanned!",
-                description: `Found: ${result.barcode}`,
-                variant: "default"
-              });
-            } else if (result.error) {
-              console.log('[MobileScanner] Native detection error:', result.error);
-            }
-          } catch (error) {
-            console.error('[MobileScanner] Native barcode detection error:', error);
-          }
-        }
-      }, interval);
-      console.log('[MobileScanner] Native barcode detection interval started');
-    } else {
-      // Use ZXing polyfill
-      console.log('[MobileScanner] Using ZXing polyfill');
-      startZXingDetection();
-    }
+    detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
   };
 
   const sendBarcodeToServer = async (barcode: string) => {
     if (!sessionId) return;
-    
     try {
-      // Use backend URL
       let backendUrl = 'https://retail-india-pos-master.onrender.com';
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
         backendUrl = 'http://localhost:3001';
       }
-      
-      const response = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
+      await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          barcode,
-          timestamp: new Date().toISOString()
-        })
+        body: JSON.stringify({ barcode, timestamp: new Date().toISOString() })
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to send barcode data');
-      }
     } catch (error) {
-      console.error('Failed to send barcode:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send barcode to main application",
-        variant: "destructive"
-      });
+      // Ignore
     }
   };
 
   const handleManualBarcode = async (barcode: string) => {
     if (!barcode.trim()) return;
-    
     await sendBarcodeToServer(barcode.trim());
     setLastScanned(barcode.trim());
     toast({
@@ -284,12 +215,6 @@ const MobileScanner = () => {
       variant: "default"
     });
   };
-
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
 
   if (!sessionId) {
     return (
@@ -337,14 +262,12 @@ const MobileScanner = () => {
                   </>
                 )}
               </div>
-              
               <div className="text-xs text-muted-foreground">
                 Session: {sessionId.substring(0, 8)}...
               </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Camera Scanner */}
         <Card>
           <CardHeader>
@@ -376,7 +299,6 @@ const MobileScanner = () => {
                   </div>
                 )}
               </div>
-              
               <div className="flex gap-2">
                 {!scanning ? (
                   <Button onClick={startCamera} className="flex-1">
@@ -389,7 +311,6 @@ const MobileScanner = () => {
                   </Button>
                 )}
               </div>
-              
               {/* Performance Mode Toggle */}
               {scanning && (
                 <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
@@ -414,7 +335,6 @@ const MobileScanner = () => {
                   </Button>
                 </div>
               )}
-              
               {detectionSupported && scanning && (
                 <div className="text-center">
                   <Badge variant="secondary" className="text-xs">
@@ -440,7 +360,6 @@ const MobileScanner = () => {
             </div>
           </CardContent>
         </Card>
-
         {/* Manual Entry */}
         <Card>
           <CardHeader>
@@ -471,7 +390,6 @@ const MobileScanner = () => {
                   Send
                 </Button>
               </div>
-              
               {/* Test Camera Button */}
               {scanning && (
                 <div className="space-y-2">
@@ -479,25 +397,6 @@ const MobileScanner = () => {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      console.log('[MobileScanner] Testing camera access...');
-                      console.log('[MobileScanner] Video element:', videoRef.current);
-                      console.log('[MobileScanner] Video ready state:', videoRef.current?.readyState);
-                      console.log('[MobileScanner] Video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
-                      console.log('[MobileScanner] Stream tracks:', streamRef.current?.getTracks().map(t => t.kind));
-                      
-                      // Test ZXing directly
-                      if (zxingReaderRef.current) {
-                        console.log('[MobileScanner] ZXing reader exists');
-                      } else {
-                        console.log('[MobileScanner] ZXing reader not created');
-                      }
-                      
-                      // Test BarcodeDetector
-                      console.log('[MobileScanner] BarcodeDetector supported:', barcodeDetector.isBarcodeDetectionSupported());
-                      console.log('[MobileScanner] Detection supported:', detectionSupported);
-                      console.log('[MobileScanner] Using polyfill:', usingPolyfill);
-                      
-                      // Test camera capture
                       if (videoRef.current && videoRef.current.videoWidth > 0) {
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
@@ -505,7 +404,6 @@ const MobileScanner = () => {
                           canvas.width = videoRef.current.videoWidth;
                           canvas.height = videoRef.current.videoHeight;
                           ctx.drawImage(videoRef.current, 0, 0);
-                          console.log('[MobileScanner] Camera capture successful, canvas size:', canvas.width, 'x', canvas.height);
                         }
                       }
                     }}
@@ -515,7 +413,6 @@ const MobileScanner = () => {
                   <p className="text-xs text-gray-500">Click to check camera status in console</p>
                 </div>
               )}
-              
               {!detectionSupported && (
                 <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs">
                   <div className="flex items-center gap-1">
@@ -527,7 +424,6 @@ const MobileScanner = () => {
             </div>
           </CardContent>
         </Card>
-
         {/* Last Scanned */}
         {lastScanned && (
           <Card>
@@ -547,7 +443,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Error Display */}
         {error && (
           <Card>
@@ -559,7 +454,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Instructions */}
         <Card>
           <CardHeader>
