@@ -18,6 +18,7 @@ const MobileScanner = () => {
   const [error, setError] = useState<string | null>(null);
   const [detectionSupported, setDetectionSupported] = useState(false);
   const [usingPolyfill, setUsingPolyfill] = useState(false);
+  const [performanceMode, setPerformanceMode] = useState(true); // Default to performance mode
   const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -65,13 +66,14 @@ const MobileScanner = () => {
       setScanning(true);
       setError(null);
       
-      // Request camera with specific constraints for mobile
+      // Request camera with optimized constraints for mobile performance
       const constraints = {
         video: {
           facingMode: 'environment', // Use back camera
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          aspectRatio: { ideal: 16/9 }
+          width: { ideal: 640, max: 1280 }, // Lower resolution for better performance
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 15, max: 30 }, // Lower frame rate for better performance
+          aspectRatio: { ideal: 4/3 }
         }
       };
       
@@ -84,6 +86,11 @@ const MobileScanner = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
+        
+        // Optimize video element for performance
+        videoRef.current.playsInline = true;
+        videoRef.current.muted = true;
+        videoRef.current.autoplay = true;
         
         // Wait for video to be ready
         videoRef.current.onloadedmetadata = () => {
@@ -161,7 +168,7 @@ const MobileScanner = () => {
             // Only log errors that aren't "No MultiFormat Readers" (which is normal)
             if (!err.message?.includes('No MultiFormat Readers')) {
               console.error('[MobileScanner] ZXing error:', err);
-              setError('ZXing error: ' + err.message);
+              // Don't set error for ZXing errors as they're common
             }
           }
         }
@@ -169,7 +176,7 @@ const MobileScanner = () => {
       console.log('[MobileScanner] ZXing detection started successfully');
     } catch (error) {
       console.error('[MobileScanner] Error creating ZXing reader:', error);
-      setError('Failed to initialize barcode scanner: ' + error);
+      // Don't set error for ZXing initialization failures
     }
   };
 
@@ -197,10 +204,13 @@ const MobileScanner = () => {
     }
     
     if (detectionSupported) {
-      // Use native BarcodeDetector
+      // Use native BarcodeDetector with performance-based intervals
       console.log('[MobileScanner] Using native BarcodeDetector');
+      const interval = performanceMode ? 4000 : 2000; // 4 seconds in performance mode, 2 seconds in speed mode
+      console.log('[MobileScanner] Detection interval:', interval, 'ms');
+      
       detectionIntervalRef.current = setInterval(async () => {
-        if (videoRef.current && scanning) {
+        if (videoRef.current && scanning && videoRef.current.readyState >= 2) {
           try {
             console.log('[MobileScanner] Attempting native barcode detection...');
             const result = await barcodeDetector.detectFromVideo(videoRef.current);
@@ -222,7 +232,7 @@ const MobileScanner = () => {
             console.error('[MobileScanner] Native barcode detection error:', error);
           }
         }
-      }, 2000); // Check every 2 seconds for native detection
+      }, interval);
       console.log('[MobileScanner] Native barcode detection interval started');
     } else {
       // Use ZXing polyfill
@@ -379,6 +389,31 @@ const MobileScanner = () => {
                   </Button>
                 )}
               </div>
+              
+              {/* Performance Mode Toggle */}
+              {scanning && (
+                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Performance Mode</span>
+                    <span className="text-xs text-gray-500">
+                      {performanceMode ? 'Smooth camera (slower detection)' : 'Fast detection (may lag)'}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={performanceMode ? "default" : "outline"}
+                    onClick={() => {
+                      setPerformanceMode(!performanceMode);
+                      // Restart detection with new settings
+                      if (detectionSupported) {
+                        startBarcodeDetection();
+                      }
+                    }}
+                  >
+                    {performanceMode ? 'Performance' : 'Speed'}
+                  </Button>
+                </div>
+              )}
               
               {detectionSupported && scanning && (
                 <div className="text-center">
