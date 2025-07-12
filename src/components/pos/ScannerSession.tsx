@@ -17,11 +17,11 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
   const [isPolling, setIsPolling] = useState(false);
   const { toast } = useToast();
 
-  // Simple polling for now
   useEffect(() => {
     if (!sessionId) return;
 
     setIsPolling(true);
+    console.log('[ScannerSession] Polling started for session:', sessionId);
     const interval = setInterval(async () => {
       try {
         const renderUrl = 'https://retail-india-pos-master.onrender.com';
@@ -29,16 +29,20 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
         if (response.ok) {
           const data = await response.json();
           const scans = data.scans || [];
-          
           if (scans.length > 0) {
             const latestScan = scans[scans.length - 1];
             if (latestScan.barcode !== lastScannedBarcode) {
               setLastScannedBarcode(latestScan.barcode);
-              
-              const product = products.find(p => 
-                p.barcode && p.barcode.toString() === latestScan.barcode
-              );
-              
+              console.log('[ScannerSession] Barcode received from backend:', latestScan.barcode);
+              console.log('[ScannerSession] Current products array:', products);
+              // Find product by barcode
+              const product = products.find(p => {
+                const match = p.barcode && p.barcode.toString() === latestScan.barcode;
+                if (match) {
+                  console.log('[ScannerSession] Product matched:', p);
+                }
+                return match;
+              });
               if (product) {
                 onProductFound(product);
                 toast({
@@ -46,18 +50,26 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
                   description: `${product.name} added to cart`,
                   variant: "success",
                 });
+              } else {
+                console.warn('[ScannerSession] No product found with barcode:', latestScan.barcode);
+                toast({
+                  title: "Product Not Found",
+                  description: `No product found with barcode: ${latestScan.barcode}`,
+                  variant: "destructive",
+                });
               }
             }
           }
         }
       } catch (error) {
-        console.error('Error polling scanner session:', error);
+        console.error('[ScannerSession] Error polling scanner session:', error);
       }
     }, 2000);
 
     return () => {
       clearInterval(interval);
       setIsPolling(false);
+      console.log('[ScannerSession] Polling stopped for session:', sessionId);
     };
   }, [sessionId, lastScannedBarcode, products, onProductFound, toast]);
 
@@ -71,13 +83,11 @@ export const ScannerSession: React.FC<ScannerSessionProps> = ({
           Mobile Scanner Active
         </span>
       </div>
-      
       {lastScannedBarcode && (
         <div className="text-xs text-blue-600">
           Last scanned: {lastScannedBarcode}
         </div>
       )}
-      
       <div className="text-xs text-blue-500 mt-1">
         Session: {sessionId.substring(0, 8)}...
       </div>
