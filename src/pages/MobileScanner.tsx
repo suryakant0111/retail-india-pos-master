@@ -4,18 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
-import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
-import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
 
-const SCAN_COOLDOWN = 2000; // 2 seconds to prevent duplicate scans
+const SCAN_COOLDOWN = 1500; // 1.5s for faster scanning
 const VIDEO_CONSTRAINTS = {
   video: {
     facingMode: 'environment',
-    width: { ideal: 640, max: 1280 },
-    height: { ideal: 480, max: 720 },
-    frameRate: { ideal: 15, max: 30 },
-    aspectRatio: { ideal: 4/3 }
+    width: { ideal: 1280 }, // Higher resolution for better detection
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 }, // Higher frame rate for smoother scanning
   }
 };
 
@@ -26,20 +24,16 @@ const MobileScanner = () => {
   const [connected, setConnected] = useState(false);
   const [lastScanned, setLastScanned] = useState('');
   const [error, setError] = useState(null);
-  const [detectionSupported, setDetectionSupported] = useState(false);
-  const [usingPolyfill, setUsingPolyfill] = useState(false);
-  const [scanningInProgress, setScanningInProgress] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const readerRef = useRef(null);
   const detectionFrameRef = useRef(null);
-  const zxingReaderRef = useRef(null);
   const processedBarcodes = useRef(new Set());
   const lastScanTime = useRef(0);
   const { toast } = useToast();
 
   useEffect(() => {
-    setDetectionSupported(barcodeDetector.isBarcodeDetectionSupported());
-    setUsingPolyfill(!barcodeDetector.isBarcodeDetectionSupported());
     return () => {
       stopCamera();
       if (detectionFrameRef.current) cancelAnimationFrame(detectionFrameRef.current);
@@ -47,6 +41,10 @@ const MobileScanner = () => {
   }, []);
 
   const connectToSession = async () => {
+    if (!sessionId) {
+      setError('No session ID provided');
+      return;
+    }
     try {
       const backendUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
         ? 'http://localhost:3001'
@@ -59,21 +57,23 @@ const MobileScanner = () => {
       if (response.ok) {
         setConnected(true);
         toast({
-          title: "Connected!",
-          description: "You're now connected to the main application",
-          variant: "default"
+          title: 'Connected!',
+          description: 'Successfully connected to the main application',
+          variant: 'default',
         });
       } else {
-        throw new Error('Connection failed');
+        throw new Error(`Connection failed: ${response.status}`);
       }
-    } catch (error) {
-      console.error('Failed to connect:', error);
+    } catch (err) {
+      console.error('Failed to connect:', err);
       setError('Failed to connect to main application');
       toast({
-        title: "Connection Error",
-        description: "Could not connect to the main application",
-        variant: "destructive"
+        title: 'Connection Error',
+        description: 'Could not connect to the main application. Retrying...',
+        variant: 'destructive',
       });
+      // Retry after 5 seconds
+      setTimeout(connectToSession, 5000);
     }
   };
 
@@ -93,15 +93,16 @@ const MobileScanner = () => {
       setError('Failed to access camera: ' + err.message);
       setScanning(false);
       toast({
-        title: "Camera Error",
-        description: "Please allow camera access to scan barcodes",
-        variant: "destructive"
+        title: 'Camera Error',
+        description: 'Please allow camera access to scan barcodes',
+        variant: 'destructive',
       });
     }
   };
 
   const stopCamera = () => {
     setScanning(false);
+    setIsScanning(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -110,60 +111,51 @@ const MobileScanner = () => {
       cancelAnimationFrame(detectionFrameRef.current);
       detectionFrameRef.current = null;
     }
-    if (zxingReaderRef.current) {
-      zxingReaderRef.current.reset();
-      zxingReaderRef.current = null;
+    if (readerRef.current) {
+      readerRef.current.reset();
+      readerRef.current = null;
     }
   };
 
   const startBarcodeDetection = () => {
+    if (!readerRef.current) {
+      readerRef.current = new BrowserMultiFormatReader();
+    }
     processedBarcodes.current.clear();
     lastScanTime.current = 0;
-    if (detectionFrameRef.current) cancelAnimationFrame(detectionFrameRef.current);
     barcodeDetectionLoop();
-  };
-
-  const handleBarcodeResult = async (barcode) => {
-    processedBarcodes.current.add(barcode);
-    setLastScanned(barcode);
-    lastScanTime.current = Date.now();
-    await sendBarcodeToServer(barcode);
-    toast({
-      title: "Barcode Scanned!",
-      description: `Found: ${barcode}`,
-      variant: "default"
-    });
   };
 
   const barcodeDetectionLoop = async () => {
     if (!videoRef.current || !scanning) return;
-    if (scanningInProgress || Date.now() - lastScanTime.current < SCAN_COOLDOWN) {
+    if (Date.now() - lastScanTime.current < SCAN_COOLDOWN) {
       detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
       return;
     }
 
-    setScanningInProgress(true);
+    setIsScanning(true);
     try {
-      if (detectionSupported) {
-        const result = await barcodeDetector.detectFromVideo(videoRef.current);
-        if (result.success && result.barcode && !processedBarcodes.current.has(result.barcode)) {
-          handleBarcodeResult(result.barcode);
-        }
-      } else if (usingPolyfill) {
-        if (!zxingReaderRef.current) zxingReaderRef.current = new BrowserMultiFormatReader();
-        try {
-          const result = await zxingReaderRef.current.decodeOnceFromVideoElement(videoRef.current);
-          if (result && result.getText() && !processedBarcodes.current.has(result.getText())) {
-            handleBarcodeResult(result.getText());
-          }
-        } catch (err) {
-          console.error('ZXing error:', err);
+      const result = await readerRef.current.decodeFromVideoElement(videoRef.current);
+      if (result && result.getText()) {
+        const barcode = result.getText();
+        if (!processedBarcodes.current.has(barcode)) {
+          processedBarcodes.current.add(barcode);
+          lastScanTime.current = Date.now();
+          setLastScanned(barcode);
+          await sendBarcodeToServer(barcode);
+          toast({
+            title: 'Barcode Scanned!',
+            description: `Found: ${barcode}`,
+            variant: 'default',
+          });
         }
       }
     } catch (err) {
-      console.error('Detection error:', err);
+      if (!(err instanceof NotFoundException)) {
+        console.error('Scanning error:', err);
+      }
     } finally {
-      setScanningInProgress(false);
+      setIsScanning(false);
       detectionFrameRef.current = requestAnimationFrame(barcodeDetectionLoop);
     }
   };
@@ -180,10 +172,23 @@ const MobileScanner = () => {
         body: JSON.stringify({ barcode, timestamp: new Date().toISOString() })
       });
       if (!response.ok) {
-        console.error('Server error:', await response.text());
+        const errorText = await response.text();
+        console.error('Server error:', errorText);
+        setError('Failed to send barcode to server');
+        toast({
+          title: 'Server Error',
+          description: 'Failed to send barcode. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Network error:', error);
+      setError('Network error while sending barcode');
+      toast({
+        title: 'Network Error',
+        description: 'Could not reach the server. Please check your connection.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -192,9 +197,9 @@ const MobileScanner = () => {
     await sendBarcodeToServer(barcode.trim());
     setLastScanned(barcode.trim());
     toast({
-      title: "Barcode Sent!",
+      title: 'Barcode Sent!',
       description: `Barcode: ${barcode.trim()}`,
-      variant: "default"
+      variant: 'default',
     });
   };
 
@@ -281,7 +286,7 @@ const MobileScanner = () => {
                 )}
                 {scanning && (
                   <div className="absolute top-2 left-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
-                    {scanningInProgress ? 'Scanning...' : 'Ready to scan'}
+                    {isScanning ? 'Scanning...' : 'Ready to scan'}
                   </div>
                 )}
               </div>
@@ -302,18 +307,8 @@ const MobileScanner = () => {
                 <div className="text-center">
                   <Badge className="bg-blue-100 text-blue-800">
                     <Scan className="mr-1 h-3 w-3" />
-                    {detectionSupported ? 'Auto-detection active' : 'ZXing Polyfill Active'}
+                    High-speed scanning active
                   </Badge>
-                  {!detectionSupported && usingPolyfill && (
-                    <p className="text-xs text-yellow-600 mt-2">
-                      Using fallback scanner for unsupported browsers
-                    </p>
-                  )}
-                  {!detectionSupported && !usingPolyfill && (
-                    <p className="text-xs text-red-600 mt-2">
-                      Barcode scanning not supported. Use manual entry.
-                    </p>
-                  )}
                 </div>
               )}
             </div>
@@ -350,14 +345,6 @@ const MobileScanner = () => {
                   Send
                 </Button>
               </div>
-              {!detectionSupported && (
-                <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                  <div className="flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    <span>Use manual entry - auto-detection not supported</span>
-                  </div>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
