@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Customer } from '@/types';
 import { useProfile } from '@/hooks/useProfile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const POS = () => {
   const { 
@@ -52,12 +53,20 @@ const POS = () => {
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
   
   const fetchProducts = async () => {
-    if (!profile?.shop_id) return;
+    console.log('fetchProducts called with shop_id:', profile?.shop_id);
+    if (!profile?.shop_id) {
+      console.log('fetchProducts: No shop_id, returning early');
+      return;
+    }
     const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
+    console.log('fetchProducts: Supabase response - data:', data, 'error:', error);
     if (error) {
       console.error('Error fetching products:', error);
     } else if (data) {
+      console.log('fetchProducts: Setting products:', data);
       setProducts(data);
+    } else {
+      console.log('fetchProducts: No data returned from Supabase');
     }
   };
 
@@ -346,6 +355,15 @@ const POS = () => {
               products={products}
               onProductFound={handleQuickAddProduct}
             />
+            {/* Debug button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={fetchProducts}
+              title="Debug: Fetch Products"
+            >
+              Debug Fetch
+            </Button>
           </div>
           
           <QuickProductBar
