@@ -5,34 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-
-// Type declaration for BarcodeDetector
-declare global {
-  interface Window {
-    BarcodeDetector: {
-      new (): BarcodeDetector;
-    };
-  }
-}
-
-interface BarcodeDetector {
-  detect(image: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<Array<{
-    rawValue: string;
-    format: string;
-    boundingBox: DOMRectReadOnly;
-  }>>;
-}
+import Quagga from '@ericblade/quagga2';
 
 const SCAN_COOLDOWN = 1500; // 1.5s for faster scanning
-const DETECTION_INTERVAL = 300; // Check every 300ms for better responsiveness
-const VIDEO_CONSTRAINTS = {
-  video: {
-    facingMode: 'environment',
-    width: { ideal: 1280 }, // Higher resolution for better detection
-    height: { ideal: 720 },
-    frameRate: { ideal: 30 }, // Higher frame rate for smoother scanning
-  }
-};
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
@@ -42,44 +17,15 @@ const MobileScanner = () => {
   const [lastScanned, setLastScanned] = useState('');
   const [error, setError] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [barcodeDetectorSupported, setBarcodeDetectorSupported] = useState(false);
   const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const detectorRef = useRef(null);
-  const detectionIntervalRef = useRef(null);
+  const scannerRef = useRef(null);
   const processedBarcodes = useRef(new Set());
   const lastScanTime = useRef(0);
   const { toast } = useToast();
 
-  // Check for BarcodeDetector support
-  useEffect(() => {
-    const checkBarcodeDetectorSupport = async () => {
-      try {
-        if ('BarcodeDetector' in window) {
-          // Test if we can create a detector
-          const detector = new window.BarcodeDetector();
-          setBarcodeDetectorSupported(true);
-          detectorRef.current = detector;
-          console.log('✅ BarcodeDetector API supported');
-        } else {
-          setBarcodeDetectorSupported(false);
-          console.log('❌ BarcodeDetector API not supported');
-        }
-      } catch (err) {
-        setBarcodeDetectorSupported(false);
-        console.log('❌ BarcodeDetector API check failed:', err);
-      }
-    };
-    
-    checkBarcodeDetectorSupport();
-  }, []);
-
   useEffect(() => {
     return () => {
       stopCamera();
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-      }
     };
   }, []);
 
@@ -115,40 +61,56 @@ const MobileScanner = () => {
         description: 'Could not connect to the main application. Retrying...',
         variant: 'destructive',
       });
-      // Retry after 5 seconds
       setTimeout(connectToSession, 5000);
     }
   };
 
   const startCamera = async () => {
     try {
-      console.log('📹 Starting camera...');
       setScanning(true);
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS);
-      console.log('📹 Camera stream obtained:', stream);
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        
-        console.log('📹 Waiting for video to load...');
-        await new Promise<void>(resolve => {
-          videoRef.current.onloadedmetadata = () => {
-            console.log('📹 Video metadata loaded');
-            resolve();
-          };
-        });
-        
-        console.log('📹 Starting video playback...');
-        await videoRef.current.play();
-        console.log('📹 Video playback started');
-        
-        console.log('📹 Starting barcode detection...');
-        startBarcodeDetection();
-      }
+      // Initialize Quagga scanner
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: scannerRef.current,
+          constraints: {
+            facingMode: "environment",
+            width: { min: 640 },
+            height: { min: 480 },
+          },
+        },
+        decoder: {
+          readers: [
+            "ean_reader",
+            "ean_8_reader",
+            "code_128_reader",
+            "code_39_reader",
+            "upc_reader",
+            "upc_e_reader"
+          ],
+        },
+        locate: true,
+      }, (err) => {
+        if (err) {
+          console.error('Quagga initialization error:', err);
+          setError('Failed to initialize scanner: ' + err.message);
+          setScanning(false);
+          return;
+        }
+        Quagga.start();
+        console.log('Quagga started successfully');
+      });
+
+      // Handle barcode detection
+      Quagga.onDetected((result) => {
+        if (result && result.codeResult) {
+          handleBarcodeResult(result.codeResult.code);
+        }
+      });
     } catch (err) {
-      console.error('❌ Camera error:', err);
       setError('Failed to access camera: ' + err.message);
       setScanning(false);
       toast({
@@ -162,82 +124,28 @@ const MobileScanner = () => {
   const stopCamera = () => {
     setScanning(false);
     setIsScanning(false);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    
+    try {
+      Quagga.stop();
+      Quagga.offDetected();
+    } catch (err) {
+      console.warn('Error stopping Quagga:', err);
     }
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    
+    // Clean up video stream
+    if (scannerRef.current) {
+      const videoElements = scannerRef.current.getElementsByTagName('video');
+      for (let video of videoElements) {
+        if (video.srcObject) {
+          const tracks = video.srcObject.getTracks();
+          tracks.forEach(track => track.stop());
+        }
+      }
+      scannerRef.current.innerHTML = '';
     }
   };
 
-  const startBarcodeDetection = () => {
-    if (!barcodeDetectorSupported) {
-      console.log('❌ BarcodeDetector not supported, using fallback');
-      return;
-    }
-
-    console.log('🚀 Starting barcode detection...');
-    processedBarcodes.current.clear();
-    lastScanTime.current = 0;
-    
-    // Start detection loop
-    detectionIntervalRef.current = setInterval(async () => {
-      if (!scanning || !videoRef.current || isScanning) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - lastScanTime.current < SCAN_COOLDOWN) {
-        return;
-      }
-
-      try {
-        setIsScanning(true);
-        console.log('🔍 Attempting barcode detection...');
-        
-        // Check if video is ready
-        if (!videoRef.current.videoWidth || !videoRef.current.videoHeight) {
-          console.log('⚠️ Video not ready yet, skipping detection');
-          return;
-        }
-        
-        console.log('📹 Video dimensions:', {
-          width: videoRef.current.videoWidth,
-          height: videoRef.current.videoHeight,
-          readyState: videoRef.current.readyState
-        });
-        
-        const barcodes = await detectorRef.current.detect(videoRef.current);
-        console.log('🔍 Detection result:', barcodes);
-        
-        if (barcodes.length > 0) {
-          const barcode = barcodes[0].rawValue;
-          console.log('✅ Barcode detected:', barcode);
-          handleScanResult(barcode);
-        } else {
-          console.log('❌ No barcodes found in frame');
-        }
-      } catch (err) {
-        console.error('❌ Detection error:', err);
-        console.error('Error details:', {
-          name: err.name,
-          message: err.message,
-          stack: err.stack
-        });
-      } finally {
-        setIsScanning(false);
-      }
-    }, DETECTION_INTERVAL);
-  };
-
-  const handleScanResult = (barcode) => {
-    if (!scanning) return;
-    
+  const handleBarcodeResult = (barcode) => {
     const now = Date.now();
     
     // Apply cooldown and duplicate check
@@ -251,6 +159,7 @@ const MobileScanner = () => {
     processedBarcodes.current.add(barcode);
     lastScanTime.current = now;
     
+    setIsScanning(true);
     setLastScanned(barcode);
     sendBarcodeToServer(barcode);
     
@@ -259,6 +168,9 @@ const MobileScanner = () => {
       description: `Found: ${barcode}`,
       variant: 'default',
     });
+    
+    // Reset scanning state after a short delay
+    setTimeout(() => setIsScanning(false), 500);
   };
 
   const sendBarcodeToServer = async (barcode) => {
@@ -353,25 +265,9 @@ const MobileScanner = () => {
                 )}
               </div>
               <p className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}...</p>
-              
-              {/* BarcodeDetector Support Status */}
-              <div className="flex items-center gap-2">
-                {barcodeDetectorSupported ? (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="h-3 w-3" />
-                    <span className="text-xs">Native Barcode Detection</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-yellow-600">
-                    <AlertCircle className="h-3 w-3" />
-                    <span className="text-xs">Manual Entry Only</span>
-                  </div>
-                )}
-              </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Camera Scanner */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -379,13 +275,10 @@ const MobileScanner = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="relative rounded-lg overflow-hidden bg-black">
-                <video
-                  ref={videoRef}
-                  className="w-full h-64 object-cover"
-                  autoPlay
-                  playsInline
-                  muted
+              <div className="relative rounded-lg overflow-hidden bg-black min-h-[256px]">
+                <div 
+                  ref={scannerRef} 
+                  className="w-full h-64 flex items-center justify-center"
                 />
                 {scanning ? (
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -406,19 +299,10 @@ const MobileScanner = () => {
                     {isScanning ? 'Scanning...' : 'Ready to scan'}
                   </div>
                 )}
-                
-                {/* Debug Status */}
-                {scanning && (
-                  <div className="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
-                    <div>📹: {videoRef.current?.videoWidth || 0}x{videoRef.current?.videoHeight || 0}</div>
-                    <div>🔍: {isScanning ? 'Active' : 'Idle'}</div>
-                  </div>
-                )}
               </div>
               <Button
                 onClick={scanning ? stopCamera : startCamera}
                 className="w-full bg-blue-600 hover:bg-blue-700 transition-colors"
-                disabled={!barcodeDetectorSupported}
               >
                 {scanning ? (
                   'Stop Camera'
@@ -429,51 +313,17 @@ const MobileScanner = () => {
                   </>
                 )}
               </Button>
-              
-              {/* Test Detection Button */}
-              {scanning && barcodeDetectorSupported && (
-                <Button
-                  onClick={async () => {
-                    console.log('🧪 Manual test detection...');
-                    try {
-                      const barcodes = await detectorRef.current.detect(videoRef.current);
-                      console.log('🧪 Test detection result:', barcodes);
-                      if (barcodes.length > 0) {
-                        console.log('✅ Test barcode found:', barcodes[0].rawValue);
-                        handleScanResult(barcodes[0].rawValue);
-                      } else {
-                        console.log('❌ No barcodes in test detection');
-                      }
-                    } catch (err) {
-                      console.error('❌ Test detection failed:', err);
-                    }
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                >
-                  🧪 Test Detection
-                </Button>
-              )}
-              {scanning && barcodeDetectorSupported && (
+              {scanning && (
                 <div className="text-center">
-                  <Badge className="bg-green-100 text-green-800">
+                  <Badge className="bg-blue-100 text-blue-800">
                     <Scan className="mr-1 h-3 w-3" />
-                    Native detection active
+                    High-speed scanning active
                   </Badge>
-                </div>
-              )}
-              {!barcodeDetectorSupported && (
-                <div className="text-center p-2 bg-yellow-50 rounded-lg">
-                  <p className="text-xs text-yellow-700">
-                    Your browser doesn't support native barcode detection. Use manual entry below.
-                  </p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
-
         {/* Manual Entry */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -497,7 +347,7 @@ const MobileScanner = () => {
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const input = e.currentTarget.previousElementSibling;
                     handleManualBarcode(input.value);
                     input.value = '';
                   }}
@@ -508,7 +358,6 @@ const MobileScanner = () => {
             </div>
           </CardContent>
         </Card>
-
         {/* Last Scanned */}
         {lastScanned && (
           <Card className="shadow-lg">
@@ -528,7 +377,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Error Display */}
         {error && (
           <Card className="shadow-lg">
@@ -540,7 +388,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Instructions */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -563,6 +410,10 @@ const MobileScanner = () => {
               <div className="flex items-start gap-2">
                 <Badge className="bg-blue-100 text-blue-800">4</Badge>
                 <span>Or use manual entry for testing</span>
+              </div>
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                <AlertCircle className="h-4 w-4 text-yellow-600 inline mr-1" />
+                Ensure good lighting and hold steady for best scanning results
               </div>
             </div>
           </CardContent>
