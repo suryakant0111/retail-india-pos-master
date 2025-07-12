@@ -61,6 +61,7 @@ const MobileScanner = () => {
 
   const startCamera = async () => {
     try {
+      console.log('[MobileScanner] Starting camera...');
       setScanning(true);
       setError(null);
       
@@ -72,15 +73,22 @@ const MobileScanner = () => {
         }
       });
       
+      console.log('[MobileScanner] Camera stream obtained:', stream);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         
+        console.log('[MobileScanner] Checking barcode detection support...');
+        console.log('[MobileScanner] BarcodeDetector supported:', barcodeDetector.isBarcodeDetectionSupported());
+        
         if (barcodeDetector.isBarcodeDetectionSupported()) {
+          console.log('[MobileScanner] Using native BarcodeDetector');
           setDetectionSupported(true);
           setUsingPolyfill(false);
           startBarcodeDetection();
         } else {
+          console.log('[MobileScanner] Using ZXing polyfill');
           // ZXing polyfill
           setDetectionSupported(false);
           setUsingPolyfill(true);
@@ -88,6 +96,7 @@ const MobileScanner = () => {
         }
       }
     } catch (err: any) {
+      console.error('[MobileScanner] Camera error:', err);
       setError('Failed to access camera: ' + err.message);
       toast({
         title: "Camera Error",
@@ -98,15 +107,20 @@ const MobileScanner = () => {
   };
 
   const startZXingDetection = () => {
+    console.log('[MobileScanner] Starting ZXing detection...');
     if (zxingReaderRef.current) {
+      console.log('[MobileScanner] Stopping previous ZXing reader');
       zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
     }
     zxingReaderRef.current = new BrowserMultiFormatReader();
+    console.log('[MobileScanner] ZXing reader created');
+    
     zxingReaderRef.current.decodeFromVideoDevice(
       undefined,
       videoRef.current!,
       async (result, err) => {
         if (result) {
+          console.log('[MobileScanner] ZXing detected barcode:', result.getText());
           await sendBarcodeToServer(result.getText());
           setLastScanned(result.getText());
           toast({
@@ -116,10 +130,12 @@ const MobileScanner = () => {
           });
         }
         if (err && !err.message?.includes('No MultiFormat Readers')) {
+          console.error('[MobileScanner] ZXing error:', err);
           setError('ZXing error: ' + err.message);
         }
       }
     );
+    console.log('[MobileScanner] ZXing detection started');
   };
 
   const stopCamera = () => {
@@ -139,6 +155,7 @@ const MobileScanner = () => {
   };
 
   const startBarcodeDetection = () => {
+    console.log('[MobileScanner] Starting native barcode detection...');
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
     }
@@ -146,8 +163,12 @@ const MobileScanner = () => {
     detectionIntervalRef.current = setInterval(async () => {
       if (videoRef.current && scanning) {
         try {
+          console.log('[MobileScanner] Attempting barcode detection...');
           const result = await barcodeDetector.detectFromVideo(videoRef.current);
+          console.log('[MobileScanner] Detection result:', result);
+          
           if (result.success && result.barcode) {
+            console.log('[MobileScanner] Native detector found barcode:', result.barcode);
             await sendBarcodeToServer(result.barcode);
             setLastScanned(result.barcode);
             toast({
@@ -155,12 +176,15 @@ const MobileScanner = () => {
               description: `Found: ${result.barcode}`,
               variant: "default"
             });
+          } else if (result.error) {
+            console.log('[MobileScanner] Detection error:', result.error);
           }
         } catch (error) {
-          console.warn('Barcode detection error:', error);
+          console.error('[MobileScanner] Barcode detection error:', error);
         }
       }
     }, 1000);
+    console.log('[MobileScanner] Native barcode detection interval started');
   };
 
   const sendBarcodeToServer = async (barcode: string) => {

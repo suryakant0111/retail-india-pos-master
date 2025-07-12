@@ -38,6 +38,7 @@ class BarcodeDetector {
 
   async detectFromVideo(video: HTMLVideoElement): Promise<BarcodeDetectionResult> {
     if (!this.isSupported || !this.detector) {
+      console.log('[BarcodeDetector] Detection not supported');
       return {
         success: false,
         error: 'Barcode detection not supported in this browser'
@@ -45,11 +46,15 @@ class BarcodeDetector {
     }
 
     try {
+      console.log('[BarcodeDetector] Starting video detection...');
+      console.log('[BarcodeDetector] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+      
       // Create a canvas to capture the video frame
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
       if (!ctx) {
+        console.error('[BarcodeDetector] Failed to get canvas context');
         return {
           success: false,
           error: 'Failed to get canvas context'
@@ -60,27 +65,35 @@ class BarcodeDetector {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
+      console.log('[BarcodeDetector] Canvas dimensions:', canvas.width, 'x', canvas.height);
+      
       // Draw the current video frame to canvas
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      console.log('[BarcodeDetector] Video frame captured, detecting barcodes...');
       
       // Detect barcodes in the image
       const barcodes = await this.detector.detect(canvas);
       
+      console.log('[BarcodeDetector] Detection completed, found barcodes:', barcodes.length);
+      
       if (barcodes.length > 0) {
         // Return the first detected barcode
+        console.log('[BarcodeDetector] First barcode:', barcodes[0].rawValue);
         return {
           success: true,
           barcode: barcodes[0].rawValue
         };
       }
       
+      console.log('[BarcodeDetector] No barcodes detected');
       return {
         success: false,
         error: 'No barcode detected'
       };
       
     } catch (error) {
-      console.error('Barcode detection error:', error);
+      console.error('[BarcodeDetector] Detection error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Detection failed'
