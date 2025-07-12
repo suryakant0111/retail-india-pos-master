@@ -1,349 +1,232 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone, Settings, Zap, Clock } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
 
-// Type declaration for BarcodeDetector
-declare global {
-  interface Window {
-    BarcodeDetector: {
-      new (): Promise<any>;
-      detect(image: HTMLVideoElement): Promise<Array<{ rawValue: string }>>;
-    };
+const SCAN_COOLDOWN = 1500; // 1.5s for faster scanning
+const VIDEO_CONSTRAINTS = {
+  video: {
+    facingMode: 'environment',
+    width: { ideal: 1280 }, // Higher resolution for better detection
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 }, // Higher frame rate for smoother scanning
   }
-}
-
-const SCAN_COOLDOWN = 2000; // 2 seconds between scans
-const DETECTION_INTERVAL = 500; // Check every 500ms instead of every frame
+};
 
 const MobileScanner = () => {
-  // Get session ID from URL params
-  const [sessionId, setSessionId] = useState('');
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get('session');
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [lastScanned, setLastScanned] = useState('');
   const [error, setError] = useState(null);
-  const [detectionSupported, setDetectionSupported] = useState(false);
-  const [scanningInProgress, setScanningInProgress] = useState(false);
-  const [lastScanTime, setLastScanTime] = useState(0);
-  const [processedBarcodes, setProcessedBarcodes] = useState(new Set());
-  const [scanCount, setScanCount] = useState(0);
-  const [performanceMode, setPerformanceMode] = useState(true);
-  const [manualInput, setManualInput] = useState('');
-  
+  const [isScanning, setIsScanning] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const detectionIntervalRef = useRef(null);
-  const canvasRef = useRef(null);
+  const readerRef = useRef(null);
+  const processedBarcodes = useRef(new Set());
+  const lastScanTime = useRef(0);
+  const { toast } = useToast();
 
-  // Toast function (simplified)
-  const toast = useCallback((config) => {
-    console.log(`Toast: ${config.title} - ${config.description}`);
-    // In a real app, this would show actual toast notifications
-  }, []);
-
-  // Get session ID from URL params
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const session = urlParams.get('session');
-    if (session) {
-      setSessionId(session);
-    }
-  }, []);
-
-  // Connect to session when sessionId is available
-  useEffect(() => {
-    if (sessionId) {
-      connectToSession();
-    }
-  }, [sessionId]);
-
-  const connectToSession = async () => {
-    try {
-      let backendUrl = 'https://retail-india-pos.vercel.app';
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        backendUrl = 'http://localhost:3001';
-      }
-      
-      console.log('[MobileScanner] Connecting to session:', sessionId);
-      
-      const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        setConnected(true);
-        setError(null);
-        toast({
-          title: "Connected!",
-          description: "Successfully connected to main application",
-          variant: "default"
-        });
-        console.log('[MobileScanner] Successfully connected to session');
-      } else {
-        console.error('[MobileScanner] Failed to connect:', response.status);
-        setError('Failed to connect to main application');
-      }
-    } catch (error) {
-      console.error('[MobileScanner] Connection error:', error);
-      setError('Failed to connect to main application');
-    }
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
+    // Initialize the barcode reader once
+    readerRef.current = new BrowserMultiFormatReader();
+    
     return () => {
       stopCamera();
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
+      if (readerRef.current) {
+        readerRef.current.reset();
       }
     };
   }, []);
 
-  // Check for barcode detection support
-  useEffect(() => {
-    const checkSupport = async () => {
-      try {
-        if ('BarcodeDetector' in window) {
-          // Test if we can create a detector
-          const detector = new (window as any).BarcodeDetector();
-          setDetectionSupported(true);
-          console.log('Native BarcodeDetector supported');
-        } else {
-          setDetectionSupported(false);
-          console.log('BarcodeDetector not supported, using fallback');
-        }
-      } catch (err) {
-        setDetectionSupported(false);
-        console.log('BarcodeDetector check failed:', err);
+  const connectToSession = async () => {
+    if (!sessionId) {
+      setError('No session ID provided');
+      return;
+    }
+    try {
+      const backendUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+        ? 'http://localhost:3001'
+        : 'https://retail-india-pos-master.onrender.com';
+      const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connected: true })
+      });
+      if (response.ok) {
+        setConnected(true);
+        toast({
+          title: 'Connected!',
+          description: 'Successfully connected to the main application',
+          variant: 'default',
+        });
+      } else {
+        throw new Error(`Connection failed: ${response.status}`);
       }
-    };
-    checkSupport();
-  }, []);
+    } catch (err) {
+      console.error('Failed to connect:', err);
+      setError('Failed to connect to main application');
+      toast({
+        title: 'Connection Error',
+        description: 'Could not connect to the main application. Retrying...',
+        variant: 'destructive',
+      });
+      // Retry after 5 seconds
+      setTimeout(connectToSession, 5000);
+    }
+  };
 
   const startCamera = async () => {
     try {
       setScanning(true);
       setError(null);
-      setScanningInProgress(false);
-      
-      // Request camera with optimized settings
-      const constraints = {
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 }
-        }
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      videoRef.current.srcObject = stream;
-      streamRef.current = stream;
-      
-      // Wait for video to be ready
-      videoRef.current.onloadedmetadata = () => {
-        console.log('Video loaded:', {
-          width: videoRef.current.videoWidth,
-          height: videoRef.current.videoHeight
+      const stream = await navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+        await new Promise(resolve => {
+          videoRef.current.onloadedmetadata = resolve;
         });
+        videoRef.current.play();
         startBarcodeDetection();
-      };
+      }
     } catch (err) {
       setError('Failed to access camera: ' + err.message);
       setScanning(false);
       toast({
-        title: "Camera Error",
-        description: "Failed to access camera: " + err.message,
-        variant: "destructive"
+        title: 'Camera Error',
+        description: 'Please allow camera access to scan barcodes',
+        variant: 'destructive',
       });
     }
   };
 
   const stopCamera = () => {
     setScanning(false);
-    setScanningInProgress(false);
-    
+    setIsScanning(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (readerRef.current) {
+      readerRef.current.reset();
     }
   };
 
   const startBarcodeDetection = () => {
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-    }
+    processedBarcodes.current.clear();
+    lastScanTime.current = 0;
     
-    // Reset state
-    setProcessedBarcodes(new Set());
-    setLastScanTime(0);
-    
-    // Start detection with interval instead of animation frame
-    detectionIntervalRef.current = setInterval(() => {
-      if (!scanning || !videoRef.current || scanningInProgress) {
-        return;
-      }
-      
-      const now = Date.now();
-      if (now - lastScanTime < SCAN_COOLDOWN) {
-        return;
-      }
-      
-      detectBarcode();
-    }, DETECTION_INTERVAL);
-  };
-
-  const detectBarcode = async () => {
-    if (!videoRef.current || scanningInProgress) return;
-    
-    setScanningInProgress(true);
-    
-    try {
-      if (detectionSupported) {
-        // Use native BarcodeDetector
-        const detector = new (window as any).BarcodeDetector();
-        const barcodes = await detector.detect(videoRef.current);
-        
-        if (barcodes.length > 0) {
-          const barcode = barcodes[0].rawValue;
-          await handleBarcodeDetected(barcode);
+    // Use the continuous scanning API
+    readerRef.current.decodeFromVideoDevice(
+      null, 
+      videoRef.current, 
+      (result, error) => {
+        if (result) {
+          handleScanResult(result);
         }
-      } else {
-        // Fallback: capture frame and simulate detection
-        await simulateBarcodeDetection();
+        if (error && !(error instanceof NotFoundException)) {
+          console.error('Scanning error:', error);
+        }
       }
-    } catch (err) {
-      console.log('Detection error:', err);
-      // Don't show error for detection failures, just continue
-    } finally {
-      setScanningInProgress(false);
-    }
+    );
   };
 
-  const simulateBarcodeDetection = async () => {
-    // Fallback: Use ZXing or other library here
-    // For now, we'll skip simulation and rely on manual entry
-    // This is where you'd implement ZXing detection
-    console.log('Native barcode detection not supported, use manual entry');
-  };
-
-  const handleBarcodeDetected = async (barcode) => {
-    if (!barcode || processedBarcodes.has(barcode)) {
+  const handleScanResult = (result) => {
+    if (!scanning) return;
+    
+    const now = Date.now();
+    const barcode = result.getText();
+    
+    // Apply cooldown and duplicate check
+    if (
+      now - lastScanTime.current < SCAN_COOLDOWN || 
+      processedBarcodes.current.has(barcode)
+    ) {
       return;
     }
     
-    // Add to processed set
-    setProcessedBarcodes(prev => new Set([...prev, barcode]));
-    setLastScanTime(Date.now());
-    setLastScanned(barcode);
-    setScanCount(prev => prev + 1);
+    processedBarcodes.current.add(barcode);
+    lastScanTime.current = now;
     
-    // Send to server
-    try {
-      await sendBarcodeToServer(barcode);
-      
-      // Show success feedback
-      toast({
-        title: "Barcode Scanned!",
-        description: `Found: ${barcode}`,
-        variant: "default"
-      });
-    } catch (error) {
-      // Remove from processed set if sending failed
-      setProcessedBarcodes(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(barcode);
-        return newSet;
-      });
-      
-      toast({
-        title: "Send Failed",
-        description: "Failed to send barcode to server",
-        variant: "destructive"
-      });
-    }
+    setIsScanning(true);
+    setLastScanned(barcode);
+    sendBarcodeToServer(barcode);
+    
+    toast({
+      title: 'Barcode Scanned!',
+      description: `Found: ${barcode}`,
+      variant: 'default',
+    });
+    
+    // Reset scanning state after a short delay
+    setTimeout(() => setIsScanning(false), 500);
   };
 
   const sendBarcodeToServer = async (barcode) => {
-    if (!sessionId) {
-      console.error('[MobileScanner] No session ID available');
-      return;
-    }
-    
-    console.log('[MobileScanner] Sending barcode to server:', barcode);
-    
+    if (!sessionId) return;
     try {
-      let backendUrl = 'https://retail-india-pos.vercel.app';
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        backendUrl = 'http://localhost:3001';
-      }
-
+      const backendUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+        ? 'http://localhost:3001'
+        : 'https://retail-india-pos-master.onrender.com';
       const response = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ barcode }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode, timestamp: new Date().toISOString() })
       });
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[MobileScanner] Server error:', errorText);
-        throw new Error(`Server error: ${response.status}`);
-      } else {
-        const responseData = await response.json();
-        console.log('[MobileScanner] Barcode sent successfully:', responseData);
+        console.error('Server error:', errorText);
+        setError('Failed to send barcode to server');
+        toast({
+          title: 'Server Error',
+          description: 'Failed to send barcode. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
-      console.error('[MobileScanner] Network error:', error);
-      setError('Failed to send barcode to server');
-      throw error;
+      console.error('Network error:', error);
+      setError('Network error while sending barcode');
+      toast({
+        title: 'Network Error',
+        description: 'Could not reach the server. Please check your connection.',
+        variant: 'destructive',
+      });
     }
   };
 
-  const handleManualBarcode = async () => {
-    if (!manualInput.trim()) return;
-    
-    await handleBarcodeDetected(manualInput.trim());
-    setManualInput('');
+  const handleManualBarcode = async (barcode) => {
+    if (!barcode.trim()) return;
+    await sendBarcodeToServer(barcode.trim());
+    setLastScanned(barcode.trim());
+    toast({
+      title: 'Barcode Sent!',
+      description: `Barcode: ${barcode.trim()}`,
+      variant: 'default',
+    });
   };
 
-  const resetScanner = () => {
-    setProcessedBarcodes(new Set());
-    setLastScanned('');
-    setScanCount(0);
-    setLastScanTime(0);
-    setError(null);
-  };
+  useEffect(() => {
+    if (sessionId) connectToSession();
+  }, [sessionId]);
 
   if (!sessionId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full shadow-lg">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
               Invalid Session
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              No session ID provided. Please scan the QR code from the main application.
-            </p>
+            <p className="text-gray-600">No session ID provided. Please scan the QR code from the main application.</p>
           </CardContent>
         </Card>
       </div>
@@ -351,77 +234,43 @@ const MobileScanner = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-md mx-auto space-y-4">
         {/* Header */}
-        <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Smartphone className="h-5 w-5 text-blue-600" />
-              </div>
-              Mobile Scanner
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Smartphone className="h-5 w-5 text-blue-600" />
+              Mobile Barcode Scanner
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {connected ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-green-700">Connected</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-yellow-700">Connecting...</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <Badge variant="secondary" className="text-xs">
-                  {scanCount} scans
-                </Badge>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                {connected ? (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="text-sm">Connected to main app</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Wifi className="h-4 w-4 animate-pulse" />
+                    <span className="text-sm">Connecting...</span>
+                  </div>
+                )}
               </div>
-              <div className="text-xs text-gray-500">
-                Session: {sessionId.substring(0, 8)}...
-              </div>
+              <p className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}...</p>
             </div>
           </CardContent>
         </Card>
-
         {/* Camera Scanner */}
-        <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <span className="text-lg">Camera Scanner</span>
-              <div className="flex items-center gap-2">
-                {scanning && (
-                  <Badge variant={scanningInProgress ? "default" : "secondary"} className="text-xs">
-                    {scanningInProgress ? (
-                      <>
-                        <Scan className="mr-1 h-3 w-3 animate-spin" />
-                        Scanning
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="mr-1 h-3 w-3" />
-                        Ready
-                      </>
-                    )}
-                  </Badge>
-                )}
-              </div>
-            </CardTitle>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Camera Scanner</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* Video Container */}
-              <div className="relative overflow-hidden rounded-xl bg-gray-900">
+              <div className="relative rounded-lg overflow-hidden bg-black">
                 <video
                   ref={videoRef}
                   className="w-full h-64 object-cover"
@@ -429,106 +278,54 @@ const MobileScanner = () => {
                   playsInline
                   muted
                 />
-                
-                {/* Scanning Overlay */}
-                {scanning && (
+                {scanning ? (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="relative">
-                      {/* Scanning Frame */}
-                      <div className="w-48 h-32 border-2 border-white/80 rounded-lg relative">
-                        <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl-lg"></div>
-                        <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-lg"></div>
-                        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-lg"></div>
-                        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-lg"></div>
-                        
-                        {/* Scanning Line */}
-                        <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-pulse"></div>
-                      </div>
-                      
-                      {/* Center Icon */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="p-3 bg-black/30 rounded-full">
-                          <Scan className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
+                    <div className="border-4 border-blue-500 border-opacity-50 rounded-lg p-4">
+                      <Scan className="h-8 w-8 text-blue-500 animate-pulse" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+                    <div className="text-center">
+                      <Camera className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">Camera not active</p>
                     </div>
                   </div>
                 )}
-                
-                {/* Inactive State */}
-                {!scanning && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-800/50">
-                    <div className="text-center">
-                      <div className="p-4 bg-gray-700 rounded-full mb-3">
-                        <Camera className="h-8 w-8 text-gray-300" />
-                      </div>
-                      <p className="text-sm text-gray-300">Camera not active</p>
-                    </div>
+                {scanning && (
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
+                    {isScanning ? 'Scanning...' : 'Ready to scan'}
                   </div>
                 )}
               </div>
-
-              {/* Camera Controls */}
-              <div className="flex gap-2">
-                {!scanning ? (
-                  <Button onClick={startCamera} className="flex-1 bg-blue-600 hover:bg-blue-700">
+              <Button
+                onClick={scanning ? stopCamera : startCamera}
+                className="w-full bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                {scanning ? (
+                  'Stop Camera'
+                ) : (
+                  <>
                     <Camera className="mr-2 h-4 w-4" />
                     Start Camera
-                  </Button>
-                ) : (
-                  <Button onClick={stopCamera} variant="destructive" className="flex-1">
-                    Stop Camera
-                  </Button>
+                  </>
                 )}
-                
-                {scanning && (
-                  <Button onClick={resetScanner} variant="outline" size="sm">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-
-              {/* Performance Toggle */}
+              </Button>
               {scanning && (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-yellow-500" />
-                    <span className="text-sm font-medium">Performance Mode</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant={performanceMode ? "default" : "outline"}
-                    onClick={() => setPerformanceMode(!performanceMode)}
-                  >
-                    {performanceMode ? 'Smooth' : 'Fast'}
-                  </Button>
+                <div className="text-center">
+                  <Badge className="bg-blue-100 text-blue-800">
+                    <Scan className="mr-1 h-3 w-3" />
+                    High-speed scanning active
+                  </Badge>
                 </div>
               )}
-
-              {/* Detection Status */}
-              <div className="text-center">
-                <Badge variant={detectionSupported ? "default" : "secondary"} className="text-xs">
-                  {detectionSupported ? (
-                    <>
-                      <CheckCircle className="mr-1 h-3 w-3" />
-                      Native Detection
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="mr-1 h-3 w-3" />
-                      Fallback Mode
-                    </>
-                  )}
-                </Badge>
-              </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Manual Entry */}
-        <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Manual Entry</CardTitle>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Manual Entry</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -536,79 +333,81 @@ const MobileScanner = () => {
                 <input
                   type="text"
                   placeholder="Enter barcode manually..."
-                  value={manualInput}
-                  onChange={(e) => setManualInput(e.target.value)}
-                  className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
-                      handleManualBarcode();
+                      handleManualBarcode(e.currentTarget.value);
+                      e.currentTarget.value = '';
                     }
                   }}
                 />
-                <Button size="sm" onClick={handleManualBarcode} className="bg-blue-600 hover:bg-blue-700">
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={(e) => {
+                    const input = e.currentTarget.previousElementSibling;
+                    handleManualBarcode(input.value);
+                    input.value = '';
+                  }}
+                >
                   Send
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Last Scanned */}
         {lastScanned && (
-          <Card className="shadow-lg border-0 bg-green-50 border-green-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-green-800">Last Scanned</CardTitle>
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">Last Scanned</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-3 p-3 bg-white rounded-lg">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-green-800">Barcode Sent Successfully!</p>
-                  <p className="text-xs text-green-600 font-mono mt-1">{lastScanned}</p>
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Barcode Sent!</p>
+                    <p className="text-xs text-green-600 font-mono">{lastScanned}</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
-
         {/* Error Display */}
         {error && (
-          <Card className="shadow-lg border-0 bg-red-50 border-red-200">
+          <Card className="shadow-lg">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3 p-3 bg-white rounded-lg">
-                <AlertCircle className="h-5 w-5 text-red-500" />
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-red-500" />
                 <span className="text-sm text-red-700">{error}</span>
               </div>
             </CardContent>
           </Card>
         )}
-
         {/* Instructions */}
-        <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Quick Guide</CardTitle>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">How to Use</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-blue-600">1</span>
-                </div>
-                <span className="text-sm">Tap "Start Camera" to begin scanning</span>
+            <div className="space-y-3 text-sm text-gray-600">
+              <div className="flex items-start gap-2">
+                <Badge className="bg-blue-100 text-blue-800">1</Badge>
+                <span>Click "Start Camera" to begin scanning</span>
               </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-blue-600">2</span>
-                </div>
-                <span className="text-sm">Point camera at barcodes within the frame</span>
+              <div className="flex items-start gap-2">
+                <Badge className="bg-blue-100 text-blue-800">2</Badge>
+                <span>Point camera at product barcodes</span>
               </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-blue-600">3</span>
-                </div>
-                <span className="text-sm">Detected barcodes are sent automatically</span>
+              <div className="flex items-start gap-2">
+                <Badge className="bg-blue-100 text-blue-800">3</Badge>
+                <span>Scanned barcodes are sent to main app automatically</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Badge className="bg-blue-100 text-blue-800">4</Badge>
+                <span>Or use manual entry for testing</span>
               </div>
             </div>
           </CardContent>
