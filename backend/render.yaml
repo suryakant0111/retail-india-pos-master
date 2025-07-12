@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: retail-pos-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    rootDir: backend
+    envVars:
+      - key: NODE_ENV
+        value: production 
