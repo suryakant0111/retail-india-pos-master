@@ -33,7 +33,6 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     // Use local IP address for mobile access, fallback to window.location.origin
     let baseUrl = window.location.origin;
     if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
-      // Try to use the current IP if available, else fallback to localhost
       baseUrl = `http://${window.location.hostname}:5173`;
     }
     const url = `${baseUrl}/mobile-scanner?session=${session}`;
@@ -42,11 +41,38 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     // Generate QR code
     generateQRCode(url);
     
+    // Immediately connect to backend session
+    connectToBackendSession(session);
+    
     toast({
       title: "Scanner Started",
       description: "Mobile scanner is now active and polling for scans",
       variant: "success",
     });
+  };
+
+  // Connect to backend session immediately
+  const connectToBackendSession = async (sessionId: string) => {
+    try {
+      let backendUrl = 'https://retail-india-pos-master.onrender.com';
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        backendUrl = 'http://localhost:3001';
+      }
+      
+      const response = await fetch(`${backendUrl}/api/mobile-scanner/connect/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connected: true })
+      });
+      
+      if (response.ok) {
+        console.log('[MobileScannerQR] Backend session connected:', sessionId);
+      } else {
+        console.warn('[MobileScannerQR] Failed to connect to backend session');
+      }
+    } catch (error) {
+      console.error('[MobileScannerQR] Error connecting to backend session:', error);
+    }
   };
 
   // Generate QR code for the URL
@@ -151,6 +177,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
               variant: "success",
             });
           } else {
+            setProcessedBarcodes(prev => new Set([...prev, barcode]));
             console.warn('[MobileScannerQR] No product found with barcode:', barcode);
             toast({
               title: "Product Not Found",
@@ -167,7 +194,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
           variant: "destructive",
         });
       }
-    }, 2000);
+    }, 500); // Faster polling for more responsive scanning
 
     return () => {
       clearInterval(interval);
