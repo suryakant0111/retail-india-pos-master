@@ -320,9 +320,16 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       const barcode = (e.target as HTMLInputElement).value;
+                      console.log('[MobileScannerQR] Manual entry barcode:', barcode);
+                      console.log('[MobileScannerQR] Available products:', products);
+                      console.log('[MobileScannerQR] Products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
+                      
                       const product = products.find(p => 
                         p.barcode && p.barcode.toString() === barcode
                       );
+                      
+                      console.log('[MobileScannerQR] Found product:', product);
+                      
                       if (product) {
                         onProductFound(product);
                         (e.target as HTMLInputElement).value = '';
@@ -341,6 +348,12 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                     }
                   }}
                 />
+              </div>
+              <div className="text-xs text-gray-500">
+                <p>Available barcodes for testing:</p>
+                {products.filter(p => p.barcode).slice(0, 3).map(p => (
+                  <div key={p.id}>• {p.name}: {p.barcode}</div>
+                ))}
               </div>
             </div>
           </div>
