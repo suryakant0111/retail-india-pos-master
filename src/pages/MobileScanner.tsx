@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Camera, Scan, Wifi, CheckCircle, Loader2, AlertCircle, Smartphone } from 'lucide-react';
+import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
 import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
-import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/browser';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
@@ -65,34 +65,53 @@ const MobileScanner = () => {
       setScanning(true);
       setError(null);
       
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+      // Request camera with specific constraints for mobile
+      const constraints = {
+        video: {
+          facingMode: 'environment', // Use back camera
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          aspectRatio: { ideal: 16/9 }
         }
-      });
+      };
+      
+      console.log('[MobileScanner] Requesting camera with constraints:', constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       console.log('[MobileScanner] Camera stream obtained:', stream);
+      console.log('[MobileScanner] Stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         
-        console.log('[MobileScanner] Checking barcode detection support...');
-        console.log('[MobileScanner] BarcodeDetector supported:', barcodeDetector.isBarcodeDetectionSupported());
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          console.log('[MobileScanner] Video metadata loaded');
+          console.log('[MobileScanner] Video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          
+          // Start barcode detection after video is ready
+          startBarcodeDetection();
+        };
         
-        if (barcodeDetector.isBarcodeDetectionSupported()) {
+        videoRef.current.onerror = (error) => {
+          console.error('[MobileScanner] Video error:', error);
+          setError('Video playback error');
+        };
+        
+        // Check barcode detection support
+        console.log('[MobileScanner] Checking barcode detection support...');
+        const isSupported = barcodeDetector.isBarcodeDetectionSupported();
+        console.log('[MobileScanner] BarcodeDetector supported:', isSupported);
+        
+        if (isSupported) {
           console.log('[MobileScanner] Using native BarcodeDetector');
           setDetectionSupported(true);
           setUsingPolyfill(false);
-          startBarcodeDetection();
         } else {
           console.log('[MobileScanner] Using ZXing polyfill');
-          // ZXing polyfill
           setDetectionSupported(false);
           setUsingPolyfill(true);
-          startZXingDetection();
         }
       }
     } catch (err: any) {
@@ -113,7 +132,7 @@ const MobileScanner = () => {
     if (zxingReaderRef.current) {
       console.log('[MobileScanner] Stopping previous ZXing reader');
       try {
-        zxingReaderRef.current.reset();
+        zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
       } catch (error) {
         console.log('[MobileScanner] Error stopping previous reader:', error);
       }
@@ -171,36 +190,45 @@ const MobileScanner = () => {
   };
 
   const startBarcodeDetection = () => {
-    console.log('[MobileScanner] Starting native barcode detection...');
+    console.log('[MobileScanner] Starting barcode detection...');
+    
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
     }
     
-    detectionIntervalRef.current = setInterval(async () => {
-      if (videoRef.current && scanning) {
-        try {
-          console.log('[MobileScanner] Attempting barcode detection...');
-          const result = await barcodeDetector.detectFromVideo(videoRef.current);
-          console.log('[MobileScanner] Detection result:', result);
-          
-          if (result.success && result.barcode) {
-            console.log('[MobileScanner] Native detector found barcode:', result.barcode);
-            await sendBarcodeToServer(result.barcode);
-            setLastScanned(result.barcode);
-            toast({
-              title: "Barcode Scanned!",
-              description: `Found: ${result.barcode}`,
-              variant: "default"
-            });
-          } else if (result.error) {
-            console.log('[MobileScanner] Detection error:', result.error);
+    if (detectionSupported) {
+      // Use native BarcodeDetector
+      console.log('[MobileScanner] Using native BarcodeDetector');
+      detectionIntervalRef.current = setInterval(async () => {
+        if (videoRef.current && scanning) {
+          try {
+            console.log('[MobileScanner] Attempting native barcode detection...');
+            const result = await barcodeDetector.detectFromVideo(videoRef.current);
+            console.log('[MobileScanner] Native detection result:', result);
+            
+            if (result.success && result.barcode) {
+              console.log('[MobileScanner] Native detector found barcode:', result.barcode);
+              await sendBarcodeToServer(result.barcode);
+              setLastScanned(result.barcode);
+              toast({
+                title: "Barcode Scanned!",
+                description: `Found: ${result.barcode}`,
+                variant: "default"
+              });
+            } else if (result.error) {
+              console.log('[MobileScanner] Native detection error:', result.error);
+            }
+          } catch (error) {
+            console.error('[MobileScanner] Native barcode detection error:', error);
           }
-        } catch (error) {
-          console.error('[MobileScanner] Barcode detection error:', error);
         }
-      }
-    }, 1000);
-    console.log('[MobileScanner] Native barcode detection interval started');
+      }, 2000); // Check every 2 seconds for native detection
+      console.log('[MobileScanner] Native barcode detection interval started');
+    } else {
+      // Use ZXing polyfill
+      console.log('[MobileScanner] Using ZXing polyfill');
+      startZXingDetection();
+    }
   };
 
   const sendBarcodeToServer = async (barcode: string) => {
@@ -433,6 +461,18 @@ const MobileScanner = () => {
                       console.log('[MobileScanner] BarcodeDetector supported:', barcodeDetector.isBarcodeDetectionSupported());
                       console.log('[MobileScanner] Detection supported:', detectionSupported);
                       console.log('[MobileScanner] Using polyfill:', usingPolyfill);
+                      
+                      // Test camera capture
+                      if (videoRef.current && videoRef.current.videoWidth > 0) {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                          canvas.width = videoRef.current.videoWidth;
+                          canvas.height = videoRef.current.videoHeight;
+                          ctx.drawImage(videoRef.current, 0, 0);
+                          console.log('[MobileScanner] Camera capture successful, canvas size:', canvas.width, 'x', canvas.height);
+                        }
+                      }
                     }}
                   >
                     Test Camera
