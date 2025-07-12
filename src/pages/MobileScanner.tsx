@@ -6,31 +6,13 @@ import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
-// Type declaration for BarcodeDetector
-declare global {
-  interface Window {
-    BarcodeDetector: {
-      new (): BarcodeDetector;
-    };
-  }
-}
-
-interface BarcodeDetector {
-  detect(image: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<Array<{
-    rawValue: string;
-    format: string;
-    boundingBox: DOMRectReadOnly;
-  }>>;
-}
-
 const SCAN_COOLDOWN = 1500; // 1.5s for faster scanning
-const DETECTION_INTERVAL = 300; // Check every 300ms for better responsiveness
 const VIDEO_CONSTRAINTS = {
   video: {
     facingMode: 'environment',
-    width: { ideal: 1280 }, // Higher resolution for better detection
+    width: { ideal: 1280 },
     height: { ideal: 720 },
-    frameRate: { ideal: 30 }, // Higher frame rate for smoother scanning
+    frameRate: { ideal: 30 },
   }
 };
 
@@ -42,43 +24,39 @@ const MobileScanner = () => {
   const [lastScanned, setLastScanned] = useState('');
   const [error, setError] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [barcodeDetectorSupported, setBarcodeDetectorSupported] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const detectorRef = useRef(null);
-  const detectionIntervalRef = useRef(null);
   const processedBarcodes = useRef(new Set());
   const lastScanTime = useRef(0);
   const { toast } = useToast();
+  const detectorRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
-  // Check for BarcodeDetector support
   useEffect(() => {
-    const checkBarcodeDetectorSupport = async () => {
-      try {
-        if ('BarcodeDetector' in window) {
-          // Test if we can create a detector
-          const detector = new window.BarcodeDetector();
-          setBarcodeDetectorSupported(true);
-          detectorRef.current = detector;
-          console.log('✅ BarcodeDetector API supported');
-        } else {
-          setBarcodeDetectorSupported(false);
-          console.log('❌ BarcodeDetector API not supported');
+    // Initialize the barcode detector when component mounts
+    const initBarcodeDetector = async () => {
+      if ('BarcodeDetector' in window) {
+        try {
+          const supportedFormats = await BarcodeDetector.getSupportedFormats();
+          if (supportedFormats.length > 0) {
+            detectorRef.current = new BarcodeDetector({
+              formats: ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_39', 'code_128']
+            });
+          }
+        } catch (err) {
+          console.error('BarcodeDetector initialization failed:', err);
         }
-      } catch (err) {
-        setBarcodeDetectorSupported(false);
-        console.log('❌ BarcodeDetector API check failed:', err);
+      } else {
+        console.warn('BarcodeDetector API not supported in this browser');
       }
     };
-    
-    checkBarcodeDetectorSupport();
-  }, []);
 
-  useEffect(() => {
+    initBarcodeDetector();
+
     return () => {
       stopCamera();
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
     };
   }, []);
@@ -115,7 +93,6 @@ const MobileScanner = () => {
         description: 'Could not connect to the main application. Retrying...',
         variant: 'destructive',
       });
-      // Retry after 5 seconds
       setTimeout(connectToSession, 5000);
     }
   };
@@ -148,59 +125,43 @@ const MobileScanner = () => {
   const stopCamera = () => {
     setScanning(false);
     setIsScanning(false);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
   };
 
   const startBarcodeDetection = () => {
-    if (!barcodeDetectorSupported) {
-      console.log('BarcodeDetector not supported, using fallback');
-      return;
-    }
-
     processedBarcodes.current.clear();
     lastScanTime.current = 0;
-    
-    // Start detection loop
-    detectionIntervalRef.current = setInterval(async () => {
-      if (!scanning || !videoRef.current || isScanning) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - lastScanTime.current < SCAN_COOLDOWN) {
-        return;
-      }
-
-      try {
-        setIsScanning(true);
-        const barcodes = await detectorRef.current.detect(videoRef.current);
-        
-        if (barcodes.length > 0) {
-          const barcode = barcodes[0].rawValue;
-          handleScanResult(barcode);
-        }
-      } catch (err) {
-        // Ignore detection errors, they're common
-        console.log('Detection attempt failed:', err.message);
-      } finally {
-        setIsScanning(false);
-      }
-    }, DETECTION_INTERVAL);
+    detectBarcode();
   };
 
-  const handleScanResult = (barcode) => {
-    if (!scanning) return;
+  const detectBarcode = async () => {
+    if (!videoRef.current || !scanning) return;
     
+    try {
+      // Use native BarcodeDetector API if available
+      if (detectorRef.current) {
+        const barcodes = await detectorRef.current.detect(videoRef.current);
+        if (barcodes.length > 0) {
+          handleBarcodeResult(barcodes[0].rawValue);
+        }
+      }
+    } catch (err) {
+      console.error('Barcode detection error:', err);
+    } finally {
+      if (scanning) {
+        animationFrameRef.current = requestAnimationFrame(detectBarcode);
+      }
+    }
+  };
+
+  const handleBarcodeResult = (barcode) => {
     const now = Date.now();
     
     // Apply cooldown and duplicate check
@@ -214,6 +175,7 @@ const MobileScanner = () => {
     processedBarcodes.current.add(barcode);
     lastScanTime.current = now;
     
+    setIsScanning(true);
     setLastScanned(barcode);
     sendBarcodeToServer(barcode);
     
@@ -222,6 +184,9 @@ const MobileScanner = () => {
       description: `Found: ${barcode}`,
       variant: 'default',
     });
+    
+    // Reset scanning state after a short delay
+    setTimeout(() => setIsScanning(false), 500);
   };
 
   const sendBarcodeToServer = async (barcode) => {
@@ -316,25 +281,9 @@ const MobileScanner = () => {
                 )}
               </div>
               <p className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}...</p>
-              
-              {/* BarcodeDetector Support Status */}
-              <div className="flex items-center gap-2">
-                {barcodeDetectorSupported ? (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="h-3 w-3" />
-                    <span className="text-xs">Native Barcode Detection</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-yellow-600">
-                    <AlertCircle className="h-3 w-3" />
-                    <span className="text-xs">Manual Entry Only</span>
-                  </div>
-                )}
-              </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Camera Scanner */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -373,7 +322,6 @@ const MobileScanner = () => {
               <Button
                 onClick={scanning ? stopCamera : startCamera}
                 className="w-full bg-blue-600 hover:bg-blue-700 transition-colors"
-                disabled={!barcodeDetectorSupported}
               >
                 {scanning ? (
                   'Stop Camera'
@@ -384,25 +332,17 @@ const MobileScanner = () => {
                   </>
                 )}
               </Button>
-              {scanning && barcodeDetectorSupported && (
+              {scanning && (
                 <div className="text-center">
-                  <Badge className="bg-green-100 text-green-800">
+                  <Badge className="bg-blue-100 text-blue-800">
                     <Scan className="mr-1 h-3 w-3" />
-                    Native detection active
+                    High-speed scanning active
                   </Badge>
-                </div>
-              )}
-              {!barcodeDetectorSupported && (
-                <div className="text-center p-2 bg-yellow-50 rounded-lg">
-                  <p className="text-xs text-yellow-700">
-                    Your browser doesn't support native barcode detection. Use manual entry below.
-                  </p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
-
         {/* Manual Entry */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -426,7 +366,7 @@ const MobileScanner = () => {
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const input = e.currentTarget.previousElementSibling;
                     handleManualBarcode(input.value);
                     input.value = '';
                   }}
@@ -437,7 +377,6 @@ const MobileScanner = () => {
             </div>
           </CardContent>
         </Card>
-
         {/* Last Scanned */}
         {lastScanned && (
           <Card className="shadow-lg">
@@ -457,7 +396,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Error Display */}
         {error && (
           <Card className="shadow-lg">
@@ -469,7 +407,6 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Instructions */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -493,6 +430,12 @@ const MobileScanner = () => {
                 <Badge className="bg-blue-100 text-blue-800">4</Badge>
                 <span>Or use manual entry for testing</span>
               </div>
+              {!detectorRef.current && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 inline mr-1" />
+                  Using fallback scanning method. For better results, use Chrome on Android.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
