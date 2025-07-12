@@ -9,7 +9,15 @@ import { requireAdmin } from './jwtAuth.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// Enhanced CORS configuration for production
+app.use(cors({
+  origin: ['https://your-vercel-app.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 const supabase = createClient(
@@ -136,12 +144,23 @@ app.post('/scanner-scan', async (req, res) => {
 app.get('/scanner-session/:sessionId', (req, res) => {
   try {
     const { sessionId } = req.params;
+    console.log(`Fetching session data for: ${sessionId}`);
     const sessionData = scannerSessions.get(sessionId) || [];
+    console.log(`Found ${sessionData.length} scans for session ${sessionId}`);
     res.json({ scans: sessionData });
   } catch (error) {
     console.error('Scanner session API error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    activeSessions: scannerSessions.size
+  });
 });
 
 app.get('/', (req, res) => {
