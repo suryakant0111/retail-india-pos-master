@@ -153,6 +153,7 @@ const POS = () => {
 
   useEffect(() => {
     console.log('POS products:', products);
+    console.log('POS products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
     (window as any).products = products;
   }, [products]);
   

@@ -318,7 +318,9 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                   placeholder="Enter barcode manually"
                   className="flex-1 px-3 py-2 border rounded text-sm"
                   onKeyPress={(e) => {
+                    console.log('[MobileScannerQR] Key pressed:', e.key);
                     if (e.key === 'Enter') {
+                      console.log('[MobileScannerQR] Enter pressed, processing barcode');
                       const barcode = (e.target as HTMLInputElement).value;
                       console.log('[MobileScannerQR] Manual entry barcode:', barcode);
                       console.log('[MobileScannerQR] Available products:', products);
@@ -331,6 +333,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                       console.log('[MobileScannerQR] Found product:', product);
                       
                       if (product) {
+                        console.log('[MobileScannerQR] Calling onProductFound with:', product);
                         onProductFound(product);
                         (e.target as HTMLInputElement).value = '';
                         toast({
@@ -348,12 +351,61 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                     }
                   }}
                 />
+                <Button 
+                  size="sm"
+                  onClick={(e) => {
+                    console.log('[MobileScannerQR] Test button clicked');
+                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const barcode = input.value.trim();
+                    console.log('[MobileScannerQR] Test button barcode:', barcode);
+                    
+                    if (!barcode) {
+                      toast({
+                        title: "No Barcode",
+                        description: "Please enter a barcode first",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    
+                    console.log('[MobileScannerQR] Available products:', products);
+                    console.log('[MobileScannerQR] Products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
+                    
+                    const product = products.find(p => 
+                      p.barcode && p.barcode.toString() === barcode
+                    );
+                    
+                    console.log('[MobileScannerQR] Found product:', product);
+                    
+                    if (product) {
+                      console.log('[MobileScannerQR] Calling onProductFound with:', product);
+                      onProductFound(product);
+                      input.value = '';
+                      toast({
+                        title: "Product Found",
+                        description: `${product.name} added to cart`,
+                        variant: "success",
+                      });
+                    } else {
+                      toast({
+                        title: "Product Not Found",
+                        description: `No product found with barcode: ${barcode}`,
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  Test
+                </Button>
               </div>
               <div className="text-xs text-gray-500">
                 <p>Available barcodes for testing:</p>
                 {products.filter(p => p.barcode).slice(0, 3).map(p => (
                   <div key={p.id}>• {p.name}: {p.barcode}</div>
                 ))}
+                {products.filter(p => p.barcode).length === 0 && (
+                  <div>No products with barcodes found. Add barcodes to your products first.</div>
+                )}
               </div>
             </div>
           </div>
