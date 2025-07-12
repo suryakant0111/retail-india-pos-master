@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, Loader2, AlertCircle, Smartphone } from 'lucide-react';
 import { barcodeDetector } from '@/lib/barcode-detector';
 import { useSearchParams } from 'react-router-dom';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +17,8 @@ const MobileScanner = () => {
   const [lastScanned, setLastScanned] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [detectionSupported, setDetectionSupported] = useState(false);
+  const [usingPolyfill, setUsingPolyfill] = useState(false);
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -67,10 +70,15 @@ const MobileScanner = () => {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         
-        setDetectionSupported(barcodeDetector.isBarcodeDetectionSupported());
-        
         if (barcodeDetector.isBarcodeDetectionSupported()) {
+          setDetectionSupported(true);
+          setUsingPolyfill(false);
           startBarcodeDetection();
+        } else {
+          // ZXing polyfill
+          setDetectionSupported(false);
+          setUsingPolyfill(true);
+          startZXingDetection();
         }
       }
     } catch (err: any) {
@@ -83,6 +91,31 @@ const MobileScanner = () => {
     }
   };
 
+  const startZXingDetection = () => {
+    if (zxingReaderRef.current) {
+      zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
+    }
+    zxingReaderRef.current = new BrowserMultiFormatReader();
+    zxingReaderRef.current.decodeFromVideoDevice(
+      undefined,
+      videoRef.current!,
+      async (result, err) => {
+        if (result) {
+          await sendBarcodeToServer(result.getText());
+          setLastScanned(result.getText());
+          toast({
+            title: "Barcode Scanned! (ZXing)",
+            description: `Found: ${result.getText()}`,
+            variant: "default"
+          });
+        }
+        if (err && !err.message?.includes('No MultiFormat Readers')) {
+          setError('ZXing error: ' + err.message);
+        }
+      }
+    );
+  };
+
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -91,6 +124,10 @@ const MobileScanner = () => {
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
       detectionIntervalRef.current = null;
+    }
+    if (zxingReaderRef.current) {
+      zxingReaderRef.current.decodeFromVideoDevice(undefined, undefined, () => {});
+      zxingReaderRef.current = null;
     }
     setScanning(false);
   };
@@ -269,6 +306,20 @@ const MobileScanner = () => {
                     <Scan className="mr-1 h-3 w-3" />
                     Auto-detection active
                   </Badge>
+                </div>
+              )}
+              {!detectionSupported && usingPolyfill && scanning && (
+                <div className="text-center mt-2">
+                  <Badge variant="secondary" className="text-xs bg-yellow-200 text-yellow-800">
+                    ZXing Polyfill Active
+                  </Badge>
+                  <p className="text-xs text-yellow-700 mt-1">Using fallback barcode scanner for unsupported browsers.</p>
+                </div>
+              )}
+              {!detectionSupported && !usingPolyfill && scanning && (
+                <div className="text-center mt-2">
+                  <Badge variant="destructive" className="text-xs">No Barcode Scanning Available</Badge>
+                  <p className="text-xs text-red-700 mt-1">Barcode scanning is not supported on this device/browser. Use manual entry below.</p>
                 </div>
               )}
             </div>

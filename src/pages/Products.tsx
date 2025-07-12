@@ -50,6 +50,7 @@ const Products = () => {
   // Bulk edit modal state
   const [editIndex, setEditIndex] = useState<number | null>(null);
   // Remove duplicate editProduct/setEditProduct declarations (keep only one)
+  const [lastScannedProduct, setLastScannedProduct] = useState<any | null>(null);
 
   // Hooks
   const { 
@@ -227,6 +228,7 @@ const Products = () => {
       setShowAddProductDialog(false);
       setProductImage(null);
       productForm.reset();
+      setLastScannedProduct(null);
     } catch (error) {
       // Error handled in hook
     }
@@ -273,6 +275,7 @@ const Products = () => {
 
   // Handle barcode scanner product data
   const handleBarcodeProductFound = (productData: BarcodeProductData) => {
+    setLastScannedProduct(productData);
     if (bulkAddMode) {
       setPendingProducts(prev => [...prev, {
         name: productData.name || '',
@@ -321,12 +324,35 @@ const Products = () => {
     setShowBarcodeScanner(false);
     setShowAddProductDialog(true);
     
-    toast({
+      toast({
       title: "Product Data Loaded",
       description: `Product "${productData.name || 'Unknown'}" loaded from barcode scan. Please add pricing details.`,
       variant: "default"
     });
   };
+
+  // Auto-fill form with lastScannedProduct when opening Add Product dialog
+  useEffect(() => {
+    if (showAddProductDialog && lastScannedProduct) {
+      const formData = {
+        name: lastScannedProduct.name || '',
+        category: lastScannedProduct.category || '',
+        price: '',
+        stock: '1',
+        description: lastScannedProduct.description || `Product scanned: ${lastScannedProduct.name || 'Unknown'}`,
+        barcode: lastScannedProduct.barcode,
+        tax: '18',
+        minStock: '5',
+        costPrice: '',
+        hsn: ''
+      };
+      productForm.reset(formData);
+      if (lastScannedProduct.image_url) {
+        setProductImage(lastScannedProduct.image_url);
+      }
+      setLastScannedProduct(null);
+    }
+  }, [showAddProductDialog]);
 
   // Import/Export handlers
   const handleImport = async (file: File) => {
@@ -384,8 +410,8 @@ const Products = () => {
   };
 
   if (loading) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -576,7 +602,7 @@ const Products = () => {
         </div>
         
         {filteredProducts.length > 0 && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             <Checkbox
               checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
               onCheckedChange={handleSelectAll}
@@ -584,7 +610,7 @@ const Products = () => {
             <span className="text-sm text-muted-foreground">
               {selectedProducts.length} of {filteredProducts.length} selected
             </span>
-          </div>
+        </div>
         )}
       </div>
       
@@ -741,7 +767,7 @@ const Products = () => {
                               variant="outline" 
                               size="icon" 
                               title="Generate Sequential Barcode" 
-                              onClick={() => {
+                          onClick={() => {
                                 const nextBarcode = generateNextBarcode(products);
                                 field.onChange(nextBarcode);
                               }}
@@ -895,7 +921,7 @@ const Products = () => {
                     </div>
                   )}
                 </div>
-                  </FormItem>
+              </FormItem>
                 </TabsContent>
               
               <DialogFooter>
@@ -927,48 +953,48 @@ const Products = () => {
             <Form {...productForm}>
                 <form onSubmit={productForm.handleSubmit(handleUpdateProduct)}>
                   <TabsContent value="basic" className="space-y-4">
-                <FormField
-                  control={productForm.control}
+              <FormField
+                control={productForm.control}
                   name="name"
-                  render={({ field }) => (
-                    <FormItem>
+                render={({ field }) => (
+                  <FormItem>
                           <FormLabel>Product Name *</FormLabel>
-                      <FormControl>
+                    <FormControl>
                             <Input placeholder="Enter product name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
                     
-                <FormField
-                  control={productForm.control}
+              <FormField
+                control={productForm.control}
                   name="category"
-                  render={({ field }) => (
-                    <FormItem>
+                render={({ field }) => (
+                  <FormItem>
                       <FormLabel>Category</FormLabel>
-                      <FormControl>
+                    <FormControl>
                             <Input placeholder="Enter category" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                    
-                <FormField
-                  control={productForm.control}
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={productForm.control}
                   name="description"
-                  render={({ field }) => (
-                    <FormItem>
+                render={({ field }) => (
+                  <FormItem>
                       <FormLabel>Description</FormLabel>
-                      <FormControl>
+                    <FormControl>
                             <Textarea placeholder="Enter product description" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                    
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
                 <FormField
                   control={productForm.control}
                   name="barcode"
@@ -1016,19 +1042,19 @@ const Products = () => {
                   render={({ field }) => (
                     <FormItem>
                           <FormLabel>Price (₹) *</FormLabel>
-                          <FormControl>
+                      <FormControl>
                             <Input type="number" placeholder="Enter price" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                     
-                    <FormField
-                      control={productForm.control}
+                <FormField
+                  control={productForm.control}
                       name="costPrice"
-                      render={({ field }) => (
-                        <FormItem>
+                  render={({ field }) => (
+                    <FormItem>
                           <FormLabel>Cost Price (₹)</FormLabel>
                       <FormControl>
                             <Input type="number" placeholder="Enter cost price" {...field} />
@@ -1058,35 +1084,35 @@ const Products = () => {
                   render={({ field }) => (
                     <FormItem>
                           <FormLabel>Current Stock *</FormLabel>
-                          <FormControl>
+                      <FormControl>
                             <Input type="number" placeholder="Enter stock quantity" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                   </TabsContent>
                   
                   <TabsContent value="advanced" className="space-y-4">
-                    <FormField
-                      control={productForm.control}
+                <FormField
+                  control={productForm.control}
                       name="minStock"
-                      render={({ field }) => (
-                        <FormItem>
+                  render={({ field }) => (
+                    <FormItem>
                           <FormLabel>Minimum Stock Level</FormLabel>
-                          <FormControl>
+                      <FormControl>
                             <Input type="number" placeholder="Enter minimum stock level" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                     
-                    <FormField
-                      control={productForm.control}
+                <FormField
+                  control={productForm.control}
                       name="hsn"
-                      render={({ field }) => (
-                        <FormItem>
+                  render={({ field }) => (
+                    <FormItem>
                           <FormLabel>HSN Code</FormLabel>
                       <FormControl>
                             <Input placeholder="Enter HSN code" {...field} />
