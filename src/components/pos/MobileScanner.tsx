@@ -54,7 +54,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
           );
           
           if (product) {
-            onProductFound(product);
+            onProductFound(product); // This should add to cart in POS
             toast({
               title: "Product Scanned",
               description: `${product.name} added to cart`,
@@ -160,7 +160,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
                       p.barcode && p.barcode.toString() === barcode
                     );
                     if (product) {
-                      onProductFound(product);
+                      onProductFound(product); // This should add to cart in POS
                       (e.target as HTMLInputElement).value = '';
                       toast({
                         title: "Product Found",

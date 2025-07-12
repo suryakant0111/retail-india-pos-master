@@ -52,9 +52,8 @@ export const ProductSearch: React.FC<ProductSearchProps> = ({
   
   const processBarcodeInput = () => {
     if (!barcodeValue.trim()) return;
-    // First try to find the product in the regular products array
+    // Only search in the products array for POS
     let product = products.find(p => p.barcode === barcodeValue.trim());
-    // If not found, do not check localStorage, just show not found
     if (product) {
       addItem(product, 1);
       setBarcodeValue('');

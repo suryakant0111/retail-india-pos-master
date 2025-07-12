@@ -143,8 +143,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
             if (product) {
               // Add barcode to processed set
               setProcessedBarcodes(prev => new Set([...prev, barcode]));
-              
-              onProductFound(product);
+              onProductFound(product); // This should add to cart in POS
               toast({
                 title: "Product Scanned",
                 description: `${product.name} added to cart`,
