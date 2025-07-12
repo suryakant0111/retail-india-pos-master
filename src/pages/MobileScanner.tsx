@@ -143,6 +143,7 @@ const MobileScanner = () => {
           setLastScanTime(Date.now());
           setLastScanned(result.barcode);
           await sendBarcodeToServer(result.barcode);
+          // Only show toast if not already processed
           toast({
             title: "Barcode Scanned!",
             description: `Found: ${result.barcode}`,
@@ -163,6 +164,7 @@ const MobileScanner = () => {
             setLastScanTime(Date.now());
             setLastScanned(result.getText());
             await sendBarcodeToServer(result.getText());
+            // Only show toast if not already processed
             toast({
               title: "Barcode Scanned! (ZXing)",
               description: `Found: ${result.getText()}`,
@@ -323,6 +325,12 @@ const MobileScanner = () => {
                       <Camera className="h-12 w-12 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-600">Camera not active</p>
                     </div>
+                  </div>
+                )}
+                {/* Scanning Status Indicator */}
+                {scanning && (
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
+                    {scanningInProgress ? 'Processing...' : 'Ready to scan'}
                   </div>
                 )}
               </div>
