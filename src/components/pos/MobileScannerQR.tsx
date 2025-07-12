@@ -30,10 +30,12 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     setIsScannerActive(true);
     setProcessedBarcodes(new Set()); // Reset processed barcodes for new session
     
-    // Use local IP address for mobile access
-    const baseUrl = window.location.hostname === 'localhost' 
-      ? 'http://192.168.1.197:5173'  // Your local IP from ipconfig
-      : window.location.origin;
+    // Use local IP address for mobile access, fallback to window.location.origin
+    let baseUrl = window.location.origin;
+    if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+      // Try to use the current IP if available, else fallback to localhost
+      baseUrl = `http://${window.location.hostname}:5173`;
+    }
     const url = `${baseUrl}/mobile-scanner?session=${session}`;
     setMobileUrl(url);
     
@@ -108,59 +110,62 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
   useEffect(() => {
     if (!sessionId || !isScannerActive) return;
 
+    // Robust backend URL for polling
+    let backendUrl = 'https://retail-india-pos-master.onrender.com';
+    if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+      backendUrl = 'http://localhost:3001';
+    }
+
     console.log('[MobileScannerQR] Polling started for session:', sessionId);
     const interval = setInterval(async () => {
       try {
-        // Use local backend for localhost testing
-        const backendUrl = window.location.hostname === 'localhost' 
-          ? 'http://localhost:3001' 
-          : 'https://retail-india-pos-master.onrender.com';
         const response = await fetch(`${backendUrl}/scanner-session/${sessionId}`);
-        if (response.ok) {
-          const data = await response.json();
-          const scans = data.scans || [];
-          if (scans.length > 0) {
-            const latestScan = scans[scans.length - 1];
-            const barcode = latestScan.barcode;
-            
-            // Check if this barcode has already been processed
-            if (processedBarcodes.has(barcode)) {
-              console.log('[MobileScannerQR] Barcode already processed:', barcode);
-              return;
+        if (!response.ok) {
+          throw new Error(`Polling failed: ${response.status}`);
+        }
+        const data = await response.json();
+        const scans = data.scans || [];
+        if (scans.length > 0) {
+          const latestScan = scans[scans.length - 1];
+          const barcode = latestScan.barcode;
+          console.log('[MobileScannerQR] Scan attempt:', barcode);
+          // Check if this barcode has already been processed
+          if (processedBarcodes.has(barcode)) {
+            console.log('[MobileScannerQR] Barcode already processed:', barcode);
+            return;
+          }
+          // Find product by barcode
+          const product = products.find(p => {
+            const match = p.barcode && p.barcode.toString() === barcode;
+            if (match) {
+              console.log('[MobileScannerQR] Product matched:', p);
             }
-            
-            console.log('[MobileScannerQR] New barcode received from backend:', barcode);
-            
-            // Find product by barcode
-            const product = products.find(p => {
-              const match = p.barcode && p.barcode.toString() === barcode;
-              if (match) {
-                console.log('[MobileScannerQR] Product matched:', p);
-              }
-              return match;
+            return match;
+          });
+          if (product) {
+            setProcessedBarcodes(prev => new Set([...prev, barcode]));
+            onProductFound(product); // This should add to cart in POS
+            toast({
+              title: "Product Scanned",
+              description: `${product.name} added to cart`,
+              variant: "success",
             });
-            
-            if (product) {
-              // Add barcode to processed set
-              setProcessedBarcodes(prev => new Set([...prev, barcode]));
-              onProductFound(product); // This should add to cart in POS
-              toast({
-                title: "Product Scanned",
-                description: `${product.name} added to cart`,
-                variant: "success",
-              });
-            } else {
-              console.warn('[MobileScannerQR] No product found with barcode:', barcode);
-              toast({
-                title: "Product Not Found",
-                description: `No product found with barcode: ${barcode}`,
-                variant: "destructive",
-              });
-            }
+          } else {
+            console.warn('[MobileScannerQR] No product found with barcode:', barcode);
+            toast({
+              title: "Product Not Found",
+              description: `No product found with barcode: ${barcode}`,
+              variant: "destructive",
+            });
           }
         }
       } catch (error) {
         console.error('[MobileScannerQR] Error polling scanner session:', error);
+        toast({
+          title: "Polling Error",
+          description: `Could not reach backend: ${error}`,
+          variant: "destructive",
+        });
       }
     }, 2000);
 

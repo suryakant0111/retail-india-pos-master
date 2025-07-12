@@ -50,7 +50,7 @@ const POS = () => {
   // Remove paymentStatus and showStatusDialog state
   const [recentSalesProducts, setRecentSalesProducts] = useState<Product[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
-
+  
   const fetchProducts = async () => {
     if (!profile?.shop_id) return;
     const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
@@ -110,33 +110,33 @@ const POS = () => {
 
   useEffect(() => {
     if (profile?.shop_id) {
-      fetchProducts();
+    fetchProducts();
       fetchRecentInvoices();
-      async function fetchCustomers() {
-        const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
-        if (error) {
-          console.error('Error fetching customers:', error);
-        } else if (data) {
-          setCustomers(data);
-          console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
-        }
+    async function fetchCustomers() {
+      const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
+      if (error) {
+        console.error('Error fetching customers:', error);
+      } else if (data) {
+        setCustomers(data);
+        console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
       }
-      async function fetchSettings() {
-        // Assume shop_settings table: shop_id, business_settings, payment_settings, pos_mode
-        const { data, error } = await supabase.from('shop_settings').select('*').eq('shop_id', profile.shop_id).single();
-        if (!error && data) {
-          setBusinessSettings(data.business_settings || {});
-          setPaymentSettings(data.payment_settings || {});
-          setPosMode(data.pos_mode || 'retail');
-        } else {
-          setBusinessSettings({});
-          setPaymentSettings({});
-          setPosMode('retail');
-        }
+    }
+    async function fetchSettings() {
+      // Assume shop_settings table: shop_id, business_settings, payment_settings, pos_mode
+      const { data, error } = await supabase.from('shop_settings').select('*').eq('shop_id', profile.shop_id).single();
+      if (!error && data) {
+        setBusinessSettings(data.business_settings || {});
+        setPaymentSettings(data.payment_settings || {});
+        setPosMode(data.pos_mode || 'retail');
+      } else {
+        setBusinessSettings({});
+        setPaymentSettings({});
+        setPosMode('retail');
       }
-      fetchCustomers();
-      fetchSettings();
-      console.log('POS profile.shop_id:', profile?.shop_id);
+    }
+    fetchCustomers();
+    fetchSettings();
+    console.log('POS profile.shop_id:', profile?.shop_id);
     }
   }, [profile?.shop_id]);
 
@@ -192,7 +192,7 @@ const POS = () => {
       finalizeTransaction();
     }
   };
-
+  
   const finalizeTransaction = async () => {
     try {
       const newInvoice = {
@@ -327,14 +327,14 @@ const POS = () => {
         
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <ProductSearch 
-              products={products}
-              onSearch={setSearchTerm}
-              searchTerm={searchTerm}
-              category={category}
-              onCategoryChange={setCategory}
-              categories={categories}
-            />
+          <ProductSearch 
+            products={products}
+            onSearch={setSearchTerm}
+            searchTerm={searchTerm}
+            category={category}
+            onCategoryChange={setCategory}
+            categories={categories}
+          />
             <MobileScannerQR
               products={products}
               onProductFound={handleQuickAddProduct}

@@ -40,7 +40,12 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     if (open) {
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
-      const qrUrl = `${window.location.origin}/mobile-scanner?session=${newSessionId}`;
+      // Use local IP address for mobile access, fallback to window.location.origin
+      let baseUrl = window.location.origin;
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        baseUrl = `http://${window.location.hostname}:5173`;
+      }
+      const qrUrl = `${baseUrl}/mobile-scanner?session=${newSessionId}`;
       setQrCodeUrl(qrUrl);
       setIsConnected(false);
       setScannedData(null);
@@ -52,9 +57,17 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   useEffect(() => {
     if (open && sessionId && !isPolling) {
       setIsPolling(true);
+      // Robust backend URL for polling
+      let backendUrl = 'https://retail-india-pos-master.onrender.com';
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        backendUrl = 'http://localhost:3001';
+      }
       pollIntervalRef.current = setInterval(async () => {
         try {
-          const response = await fetch(`/api/mobile-scanner/status/${sessionId}`);
+          const response = await fetch(`${backendUrl}/api/mobile-scanner/status/${sessionId}`);
+          if (!response.ok) {
+            throw new Error(`Polling failed: ${response.status}`);
+          }
           const data = await response.json();
 
           if (data.connected && !isConnected) {
@@ -68,14 +81,16 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
 
           if (data.scannedData) {
             const barcode = data.scannedData.barcode;
+            console.log('[MobileQRScanner] Scan attempt:', barcode);
             if (!processedBarcodes.current.has(barcode)) {
               setScannedData(data.scannedData);
               setLoading(true);
               processedBarcodes.current.add(barcode);
               try {
-                const productResponse = await fetch(`/api/products/barcode/${barcode}`);
+                const productResponse = await fetch(`${backendUrl}/api/products/barcode/${barcode}`);
                 const productData = await productResponse.json();
                 if (productData.found) {
+                  console.log('[MobileQRScanner] Product matched:', productData);
                   onProductFound(productData);
                   toast({
                     title: "Product Found!",
@@ -83,6 +98,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                     variant: "default"
                   });
                 } else {
+                  console.warn('[MobileQRScanner] No product found with barcode:', barcode);
                   onBarcodeScanned(barcode);
                   toast({
                     title: "Barcode Scanned",
@@ -90,10 +106,10 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                     variant: "default"
                   });
                 }
-                await fetch(`/api/mobile-scanner/clear/${sessionId}`, { method: 'POST' });
+                await fetch(`${backendUrl}/api/mobile-scanner/clear/${sessionId}`, { method: 'POST' });
                 setScannedData(null);
               } catch (error) {
-                console.error('Error processing scanned data:', error);
+                console.error('[MobileQRScanner] Error processing scanned data:', error);
                 toast({
                   title: "Error Processing Data",
                   description: "Failed to process scanned barcode data.",
@@ -105,7 +121,12 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
             }
           }
         } catch (error) {
-          console.warn('Polling error:', error);
+          console.warn('[MobileQRScanner] Polling error:', error);
+          toast({
+            title: "Polling Error",
+            description: `Could not reach backend: ${error}`,
+            variant: "destructive"
+          });
         }
       }, 2000);
     }
@@ -184,25 +205,36 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
             </CardHeader>
             <CardContent>
               <div className="text-center space-y-4">
-                <div className="bg-white p-4 rounded-lg border">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
-                    alt="QR Code"
-                    className="mx-auto"
-                    onError={(e) => {
-                      console.error('QR code generation failed, using fallback');
-                      e.currentTarget.style.display = 'none';
-                      const fallbackDiv = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (fallbackDiv) {
-                        fallbackDiv.style.display = 'block';
-                      }
-                    }}
-                  />
-                  <div className="hidden text-center p-4 bg-gray-100 rounded">
-                    <p className="text-sm font-mono break-all">{qrCodeUrl}</p>
-                    <p className="text-xs text-gray-600 mt-2">Copy this URL to your mobile device</p>
+                {qrCodeUrl ? (
+                  <div className="bg-white p-4 rounded-lg border">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
+                      alt="QR Code"
+                      className="mx-auto"
+                      onError={(e) => {
+                        console.error('QR code generation failed, using fallback');
+                        e.currentTarget.style.display = 'none';
+                        const fallbackDiv = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (fallbackDiv) {
+                          fallbackDiv.style.display = 'block';
+                        }
+                      }}
+                    />
+                    <div className="hidden text-center p-4 bg-gray-100 rounded">
+                      <p className="text-sm font-mono break-all">{qrCodeUrl}</p>
+                      <p className="text-xs text-gray-600 mt-2">Copy this URL to your mobile device</p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-white p-4 rounded-lg border">
+                    <div className="flex items-center justify-center h-48">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-600">Generating QR code...</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
@@ -313,6 +345,62 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                 <div className="flex items-start gap-2">
                   <Badge variant="secondary" className="text-xs">5</Badge>
                   <span>Scanned products will appear here automatically</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Manual Barcode Entry */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Manual Entry (Testing)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Test with sample barcodes or enter a barcode manually:
+                </p>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter barcode manually..."
+                      className="flex-1 px-3 py-2 border rounded text-sm"
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          const barcode = (e.target as HTMLInputElement).value;
+                          if (barcode.trim()) {
+                            // Call the parent's manual entry handler
+                            onBarcodeScanned(barcode.trim());
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <Button 
+                      size="sm"
+                      onClick={(e) => {
+                        const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                        const barcode = input.value.trim();
+                        if (barcode) {
+                          onBarcodeScanned(barcode);
+                          input.value = '';
+                        }
+                      }}
+                    >
+                      Test
+                    </Button>
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">Sample barcodes for testing:</p>
+                    <div className="space-y-1">
+                      <div>• Coca-Cola: 049000006344</div>
+                      <div>• Lay's Chips: 028400090000</div>
+                      <div>• Diet Coke: 049000006351</div>
+                      <div>• Sprite: 049000006368</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>

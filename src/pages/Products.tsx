@@ -275,6 +275,35 @@ const Products = () => {
 
   // Handle barcode scanner product data
   const handleBarcodeProductFound = (productData: BarcodeProductData) => {
+    console.log('[Products] Received barcode product data:', productData);
+    
+    if (!productData.found) {
+      toast({
+        title: "Product Not Found",
+        description: `No product data found for barcode: ${productData.barcode}. You can still add it manually.`,
+        variant: "destructive"
+      });
+      
+      // Still open the form with just the barcode filled
+      const formData = {
+        name: '',
+        category: '',
+        price: '',
+        stock: '1',
+        description: `Product scanned: Barcode ${productData.barcode}`,
+        barcode: productData.barcode,
+        tax: '18',
+        minStock: '5',
+        costPrice: '',
+        hsn: ''
+      };
+      
+      productForm.reset(formData);
+      setShowBarcodeScanner(false);
+      setShowAddProductDialog(true);
+      return;
+    }
+
     setLastScannedProduct(productData);
     if (bulkAddMode) {
       setPendingProducts(prev => [...prev, {
@@ -298,6 +327,7 @@ const Products = () => {
       setShowBarcodeScanner(false);
       return;
     }
+    
     // Auto-fill the add product form with scanned data
     const formData = {
       name: productData.name || '',
@@ -324,11 +354,61 @@ const Products = () => {
     setShowBarcodeScanner(false);
     setShowAddProductDialog(true);
     
-      toast({
+    toast({
       title: "Product Data Loaded",
       description: `Product "${productData.name || 'Unknown'}" loaded from barcode scan. Please add pricing details.`,
       variant: "default"
     });
+  };
+
+  // Manual barcode entry for testing
+  const handleManualBarcodeEntry = async (barcode: string) => {
+    if (!barcode.trim()) return;
+    
+    try {
+      // Use the same backend endpoint that the mobile scanner uses
+      let backendUrl = 'https://retail-india-pos-master.onrender.com';
+      if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
+        backendUrl = 'http://localhost:3001';
+      }
+      
+      const response = await fetch(`${backendUrl}/api/products/barcode/${barcode.trim()}`);
+      const productData = await response.json();
+      
+      if (productData.found) {
+        handleBarcodeProductFound(productData);
+      } else {
+        toast({
+          title: "Product Not Found",
+          description: `No product data found for barcode: ${barcode.trim()}. You can still add it manually.`,
+          variant: "destructive"
+        });
+        
+        // Open form with just the barcode
+        const formData = {
+          name: '',
+          category: '',
+          price: '',
+          stock: '1',
+          description: `Product scanned: Barcode ${barcode.trim()}`,
+          barcode: barcode.trim(),
+          tax: '18',
+          minStock: '5',
+          costPrice: '',
+          hsn: ''
+        };
+        
+        productForm.reset(formData);
+        setShowAddProductDialog(true);
+      }
+    } catch (error) {
+      console.error('[Products] Error fetching product data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch product data. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   // Auto-fill form with lastScannedProduct when opening Add Product dialog
@@ -454,6 +534,14 @@ const Products = () => {
           <Button variant="outline" onClick={() => setShowBarcodeScanner(true)}>
             <QrCode className="mr-2 h-4 w-4" /> Mobile QR Scan
           </Button>
+          {/* Test barcode scanning */}
+          <Button 
+            variant="outline" 
+            onClick={() => handleManualBarcodeEntry('049000006344')}
+            title="Test with Coca-Cola barcode"
+          >
+            Test Scan
+          </Button>
           {/* Stop Polling button outside dialog */}
           {isMobilePolling && (
             <Button variant="destructive" onClick={() => {
@@ -527,9 +615,9 @@ const Products = () => {
                   <label className="block text-sm font-medium">Barcode</label>
                   <input className="w-full border rounded px-2 py-1" value={editProduct.barcode} onChange={e => setEditProduct({ ...editProduct, barcode: e.target.value })} placeholder="Barcode" />
                   <label className="block text-sm font-medium">Stock</label>
-                  <input className="w-full border rounded px-2 py-1" type="number" value={String(editProduct.stock)} onChange={e => setEditProduct({ ...editProduct, stock: e.target.value })} placeholder="Stock" />
+                  <input className="w-full border rounded px-2 py-1" type="number" value={String(editProduct.stock)} onChange={e => setEditProduct({ ...editProduct, stock: parseInt(e.target.value) || 0 })} placeholder="Stock" />
                   <label className="block text-sm font-medium">Price</label>
-                  <input className="w-full border rounded px-2 py-1" type="number" value={String(editProduct.price)} onChange={e => setEditProduct({ ...editProduct, price: e.target.value })} placeholder="Price" />
+                  <input className="w-full border rounded px-2 py-1" type="number" value={String(editProduct.price)} onChange={e => setEditProduct({ ...editProduct, price: parseFloat(e.target.value) || 0 })} placeholder="Price" />
                 </div>
                 <DialogFooter>
                   <Button onClick={handleSaveEdit}>Save</Button>
@@ -874,11 +962,11 @@ const Products = () => {
                         <FormLabel>HSN Code</FormLabel>
                         <FormControl>
                           <Input placeholder="Enter HSN code" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               
               <FormItem>
                 <FormLabel>Product Image</FormLabel>
@@ -1122,15 +1210,15 @@ const Products = () => {
                   )}
                 />
                   </TabsContent>
-                  
-                <DialogFooter>
+              
+              <DialogFooter>
                   <Button type="submit">Update Product</Button>
                     <Button type="button" variant="secondary" onClick={() => setEditProduct(null)}>
                       Cancel
                     </Button>
-                </DialogFooter>
-              </form>
-            </Form>
+              </DialogFooter>
+            </form>
+          </Form>
             </Tabs>
           )}
         </DialogContent>
@@ -1141,7 +1229,7 @@ const Products = () => {
         open={showBarcodeScanner}
         onOpenChange={setShowBarcodeScanner}
         onProductFound={handleBarcodeProductFound}
-        onBarcodeScanned={handleBarcodeScan}
+        onBarcodeScanned={handleManualBarcodeEntry}
         isPolling={isMobilePolling}
         setIsPolling={setIsMobilePolling}
         stopPollingRef={mobileScannerStopRef}

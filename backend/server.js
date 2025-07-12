@@ -241,6 +241,8 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
   const { barcode } = req.params;
   
   try {
+    console.log(`[Backend] Looking up barcode: ${barcode}`);
+    
     // First check if product exists in database
     const { data: existingProduct, error: dbError } = await supabase
       .from('products')
@@ -249,10 +251,12 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
       .single();
     
     if (dbError && dbError.code !== 'PGRST116') {
+      console.error('[Backend] Database error:', dbError);
       return res.status(500).json({ error: 'Database error' });
     }
     
     if (existingProduct) {
+      console.log(`[Backend] Found existing product: ${existingProduct.name}`);
       return res.json({
         found: true,
         name: existingProduct.name,
@@ -260,9 +264,13 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
         barcode: existingProduct.barcode,
         category: existingProduct.category,
         stock: existingProduct.stock,
-        gst: existingProduct.gst
+        gst: existingProduct.gst,
+        description: existingProduct.description,
+        image_url: existingProduct.image_url
       });
     }
+    
+    console.log(`[Backend] Product not in database, checking external APIs...`);
     
     // If not in database, try to fetch from online API
     try {
@@ -271,30 +279,67 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
       
       if (data.status === 1 && data.product) {
         const product = data.product;
+        console.log(`[Backend] Found product in Open Food Facts: ${product.product_name}`);
+        
         return res.json({
           found: true,
-          name: product.product_name || product.product_name_en || 'Unknown Product',
+          name: product.product_name || product.product_name_en || product.generic_name || 'Unknown Product',
           price: 0, // Will be set manually
           barcode: barcode,
           category: product.categories_tags?.[0]?.replace('en:', '') || 'General',
           stock: 1,
           gst: 18,
-          description: product.generic_name || product.brands || '',
-          image: product.image_front_url || product.image_url || ''
+          description: product.generic_name || product.brands || product.product_name || '',
+          image_url: product.image_front_url || product.image_url || '',
+          brand: product.brands,
+          ingredients: product.ingredients_text,
+          weight: product.quantity,
+          country: product.countries_tags?.[0],
+          manufacturer: product.manufacturing_places
         });
       }
     } catch (apiError) {
-      console.log('API fetch failed:', apiError);
+      console.log('[Backend] Open Food Facts API fetch failed:', apiError);
     }
     
+    // Try UPC Item DB as fallback
+    try {
+      const upcResponse = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+      const upcData = await upcResponse.json();
+      
+      if (upcData.items && upcData.items.length > 0) {
+        const item = upcData.items[0];
+        console.log(`[Backend] Found product in UPC Item DB: ${item.title}`);
+        
+        return res.json({
+          found: true,
+          name: item.title || 'Unknown Product',
+          price: 0, // Will be set manually
+          barcode: barcode,
+          category: item.category || 'General',
+          stock: 1,
+          gst: 18,
+          description: item.description || item.title || '',
+          image_url: item.images?.[0] || '',
+          brand: item.brand,
+          weight: item.dimension,
+          manufacturer: item.brand
+        });
+      }
+    } catch (upcError) {
+      console.log('[Backend] UPC Item DB fetch failed:', upcError);
+    }
+    
+    console.log(`[Backend] No product found for barcode: ${barcode}`);
     // If no product found anywhere
     return res.json({
       found: false,
-      barcode: barcode
+      barcode: barcode,
+      error: 'No product data found in any database'
     });
     
   } catch (error) {
-    console.error('Barcode lookup error:', error);
+    console.error('[Backend] Barcode lookup error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

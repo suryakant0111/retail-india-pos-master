@@ -308,8 +308,8 @@ const Dashboard = () => {
         .from('shop_settings')
         .upsert([
           {
-            shop_id: profile.shop_id,
-            sales_target: newTarget
+          shop_id: profile.shop_id,
+          sales_target: newTarget
           }
         ], { onConflict: 'shop_id' });
     }
