@@ -109,6 +109,8 @@ const POS = () => {
   };
 
   useEffect(() => {
+    console.log('POS profile:', profile);
+    console.log('POS shop_id:', profile?.shop_id);
     if (profile?.shop_id) {
     fetchProducts();
       fetchRecentInvoices();
@@ -140,6 +142,11 @@ const POS = () => {
     }
   }, [profile?.shop_id]);
 
+  useEffect(() => {
+    console.log('POS products:', products);
+    (window as any).products = products;
+  }, [products]);
+  
   const refreshCustomers = async () => {
     if (!profile?.shop_id) return;
     const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
