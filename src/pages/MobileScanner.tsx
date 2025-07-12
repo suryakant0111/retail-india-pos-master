@@ -5,9 +5,26 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Camera, Scan, Wifi, CheckCircle, AlertCircle, Smartphone } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
+
+// Type declaration for BarcodeDetector
+declare global {
+  interface Window {
+    BarcodeDetector: {
+      new (): BarcodeDetector;
+    };
+  }
+}
+
+interface BarcodeDetector {
+  detect(image: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<Array<{
+    rawValue: string;
+    format: string;
+    boundingBox: DOMRectReadOnly;
+  }>>;
+}
 
 const SCAN_COOLDOWN = 1500; // 1.5s for faster scanning
+const DETECTION_INTERVAL = 300; // Check every 300ms for better responsiveness
 const VIDEO_CONSTRAINTS = {
   video: {
     facingMode: 'environment',
@@ -25,21 +42,43 @@ const MobileScanner = () => {
   const [lastScanned, setLastScanned] = useState('');
   const [error, setError] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [barcodeDetectorSupported, setBarcodeDetectorSupported] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const readerRef = useRef(null);
+  const detectorRef = useRef(null);
+  const detectionIntervalRef = useRef(null);
   const processedBarcodes = useRef(new Set());
   const lastScanTime = useRef(0);
   const { toast } = useToast();
 
+  // Check for BarcodeDetector support
   useEffect(() => {
-    // Initialize the barcode reader once
-    readerRef.current = new BrowserMultiFormatReader();
+    const checkBarcodeDetectorSupport = async () => {
+      try {
+        if ('BarcodeDetector' in window) {
+          // Test if we can create a detector
+          const detector = new window.BarcodeDetector();
+          setBarcodeDetectorSupported(true);
+          detectorRef.current = detector;
+          console.log('✅ BarcodeDetector API supported');
+        } else {
+          setBarcodeDetectorSupported(false);
+          console.log('❌ BarcodeDetector API not supported');
+        }
+      } catch (err) {
+        setBarcodeDetectorSupported(false);
+        console.log('❌ BarcodeDetector API check failed:', err);
+      }
+    };
     
+    checkBarcodeDetectorSupport();
+  }, []);
+
+  useEffect(() => {
     return () => {
       stopCamera();
-      if (readerRef.current) {
-        readerRef.current.reset();
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
       }
     };
   }, []);
@@ -113,35 +152,56 @@ const MobileScanner = () => {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    if (readerRef.current) {
-      readerRef.current.reset();
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
   const startBarcodeDetection = () => {
+    if (!barcodeDetectorSupported) {
+      console.log('BarcodeDetector not supported, using fallback');
+      return;
+    }
+
     processedBarcodes.current.clear();
     lastScanTime.current = 0;
     
-    // Use the continuous scanning API
-    readerRef.current.decodeFromVideoDevice(
-      null, 
-      videoRef.current, 
-      (result, error) => {
-        if (result) {
-          handleScanResult(result);
-        }
-        if (error && !(error instanceof NotFoundException)) {
-          console.error('Scanning error:', error);
-        }
+    // Start detection loop
+    detectionIntervalRef.current = setInterval(async () => {
+      if (!scanning || !videoRef.current || isScanning) {
+        return;
       }
-    );
+
+      const now = Date.now();
+      if (now - lastScanTime.current < SCAN_COOLDOWN) {
+        return;
+      }
+
+      try {
+        setIsScanning(true);
+        const barcodes = await detectorRef.current.detect(videoRef.current);
+        
+        if (barcodes.length > 0) {
+          const barcode = barcodes[0].rawValue;
+          handleScanResult(barcode);
+        }
+      } catch (err) {
+        // Ignore detection errors, they're common
+        console.log('Detection attempt failed:', err.message);
+      } finally {
+        setIsScanning(false);
+      }
+    }, DETECTION_INTERVAL);
   };
 
-  const handleScanResult = (result) => {
+  const handleScanResult = (barcode) => {
     if (!scanning) return;
     
     const now = Date.now();
-    const barcode = result.getText();
     
     // Apply cooldown and duplicate check
     if (
@@ -154,7 +214,6 @@ const MobileScanner = () => {
     processedBarcodes.current.add(barcode);
     lastScanTime.current = now;
     
-    setIsScanning(true);
     setLastScanned(barcode);
     sendBarcodeToServer(barcode);
     
@@ -163,9 +222,6 @@ const MobileScanner = () => {
       description: `Found: ${barcode}`,
       variant: 'default',
     });
-    
-    // Reset scanning state after a short delay
-    setTimeout(() => setIsScanning(false), 500);
   };
 
   const sendBarcodeToServer = async (barcode) => {
@@ -260,9 +316,25 @@ const MobileScanner = () => {
                 )}
               </div>
               <p className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}...</p>
+              
+              {/* BarcodeDetector Support Status */}
+              <div className="flex items-center gap-2">
+                {barcodeDetectorSupported ? (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-3 w-3" />
+                    <span className="text-xs">Native Barcode Detection</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-yellow-600">
+                    <AlertCircle className="h-3 w-3" />
+                    <span className="text-xs">Manual Entry Only</span>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
+
         {/* Camera Scanner */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -301,6 +373,7 @@ const MobileScanner = () => {
               <Button
                 onClick={scanning ? stopCamera : startCamera}
                 className="w-full bg-blue-600 hover:bg-blue-700 transition-colors"
+                disabled={!barcodeDetectorSupported}
               >
                 {scanning ? (
                   'Stop Camera'
@@ -311,17 +384,25 @@ const MobileScanner = () => {
                   </>
                 )}
               </Button>
-              {scanning && (
+              {scanning && barcodeDetectorSupported && (
                 <div className="text-center">
-                  <Badge className="bg-blue-100 text-blue-800">
+                  <Badge className="bg-green-100 text-green-800">
                     <Scan className="mr-1 h-3 w-3" />
-                    High-speed scanning active
+                    Native detection active
                   </Badge>
+                </div>
+              )}
+              {!barcodeDetectorSupported && (
+                <div className="text-center p-2 bg-yellow-50 rounded-lg">
+                  <p className="text-xs text-yellow-700">
+                    Your browser doesn't support native barcode detection. Use manual entry below.
+                  </p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
+
         {/* Manual Entry */}
         <Card className="shadow-lg">
           <CardHeader>
@@ -345,7 +426,7 @@ const MobileScanner = () => {
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling;
+                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
                     handleManualBarcode(input.value);
                     input.value = '';
                   }}
@@ -356,6 +437,7 @@ const MobileScanner = () => {
             </div>
           </CardContent>
         </Card>
+
         {/* Last Scanned */}
         {lastScanned && (
           <Card className="shadow-lg">
@@ -375,6 +457,7 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
+
         {/* Error Display */}
         {error && (
           <Card className="shadow-lg">
@@ -386,6 +469,7 @@ const MobileScanner = () => {
             </CardContent>
           </Card>
         )}
+
         {/* Instructions */}
         <Card className="shadow-lg">
           <CardHeader>
