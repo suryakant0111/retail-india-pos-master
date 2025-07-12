@@ -50,12 +50,12 @@ export const AppSidebar = () => {
   const role = profile?.role;
 
   return (
-    <div className="h-screen w-64 flex flex-col bg-sidebar fixed left-0 top-0 bottom-0">
-      <div className="p-6">
+    <div className="h-screen w-64 flex flex-col bg-sidebar fixed left-0 top-0 bottom-0 z-50 overflow-hidden">
+      <div className="p-6 flex-shrink-0">
         <h1 className="text-2xl font-bold text-white">Retail POS</h1>
         <div className="text-sidebar-foreground/80 mt-1">Point of Sale System</div>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4 min-h-0">
         <nav className="space-y-1">
           {/* All users have access to POS, Products, and Customers */}
           <SidebarItem icon={ShoppingCart} href="/pos" label="Point of Sale" active={isActive('/pos')} />
@@ -85,7 +85,7 @@ export const AppSidebar = () => {
           )}
         </nav>
       </div>
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border flex-shrink-0">
         <div className="flex items-center mb-4">
           <div className="h-10 w-10 rounded-full bg-sidebar-accent/30 flex items-center justify-center overflow-hidden mr-3">
             {/* Optionally show avatar or initials */}

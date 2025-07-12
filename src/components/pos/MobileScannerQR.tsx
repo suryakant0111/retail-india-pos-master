@@ -20,6 +20,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
   const [sessionId, setSessionId] = useState('');
   const [isScannerActive, setIsScannerActive] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [processedBarcodes, setProcessedBarcodes] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   // Generate mobile scanner URL and start session
@@ -27,6 +28,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
     const session = `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setSessionId(session);
     setIsScannerActive(true);
+    setProcessedBarcodes(new Set()); // Reset processed barcodes for new session
     
     // Use local IP address for mobile access
     const baseUrl = window.location.hostname === 'localhost' 
@@ -119,11 +121,19 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
           const scans = data.scans || [];
           if (scans.length > 0) {
             const latestScan = scans[scans.length - 1];
-            console.log('[MobileScannerQR] Barcode received from backend:', latestScan.barcode);
+            const barcode = latestScan.barcode;
+            
+            // Check if this barcode has already been processed
+            if (processedBarcodes.has(barcode)) {
+              console.log('[MobileScannerQR] Barcode already processed:', barcode);
+              return;
+            }
+            
+            console.log('[MobileScannerQR] New barcode received from backend:', barcode);
             
             // Find product by barcode
             const product = products.find(p => {
-              const match = p.barcode && p.barcode.toString() === latestScan.barcode;
+              const match = p.barcode && p.barcode.toString() === barcode;
               if (match) {
                 console.log('[MobileScannerQR] Product matched:', p);
               }
@@ -131,6 +141,9 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
             });
             
             if (product) {
+              // Add barcode to processed set
+              setProcessedBarcodes(prev => new Set([...prev, barcode]));
+              
               onProductFound(product);
               toast({
                 title: "Product Scanned",
@@ -138,10 +151,10 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 variant: "success",
               });
             } else {
-              console.warn('[MobileScannerQR] No product found with barcode:', latestScan.barcode);
+              console.warn('[MobileScannerQR] No product found with barcode:', barcode);
               toast({
                 title: "Product Not Found",
-                description: `No product found with barcode: ${latestScan.barcode}`,
+                description: `No product found with barcode: ${barcode}`,
                 variant: "destructive",
               });
             }
@@ -156,7 +169,7 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
       clearInterval(interval);
       console.log('[MobileScannerQR] Polling stopped for session:', sessionId);
     };
-  }, [sessionId, isScannerActive, products, onProductFound, toast]);
+  }, [sessionId, isScannerActive, products, onProductFound, toast, processedBarcodes]);
 
   return (
     <div className="flex items-center gap-2">

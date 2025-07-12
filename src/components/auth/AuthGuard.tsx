@@ -36,10 +36,10 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
   }
 
   return (
-    <div className="flex">
+    <div className="flex min-h-screen">
       <AppSidebar />
-      <div className="flex-1 ml-64">
-        <main>
+      <div className="flex-1 ml-64 min-w-0">
+        <main className="h-full">
           <Outlet />
         </main>
       </div>
