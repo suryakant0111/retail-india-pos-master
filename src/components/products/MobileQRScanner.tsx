@@ -64,13 +64,22 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       }
       pollIntervalRef.current = setInterval(async () => {
         try {
+          console.log('📡 [MobileQRScanner] Polling backend for session:', sessionId);
           const response = await fetch(`${backendUrl}/api/mobile-scanner/status/${sessionId}`);
+          console.log('📡 [MobileQRScanner] Response status:', response.status);
+          console.log('📡 [MobileQRScanner] Response ok:', response.ok);
+          
           if (!response.ok) {
-            throw new Error(`Polling failed: ${response.status}`);
+            const errorText = await response.text();
+            console.error('📡 [MobileQRScanner] Polling failed:', response.status, errorText);
+            throw new Error(`Polling failed: ${response.status} - ${errorText}`);
           }
+          
           const data = await response.json();
+          console.log('📡 [MobileQRScanner] Received data:', data);
 
           if (data.connected && !isConnected) {
+            console.log('📡 [MobileQRScanner] Mobile device connected!');
             setIsConnected(true);
             toast({
               title: "Mobile Device Connected!",
@@ -81,16 +90,23 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
 
           if (data.scannedData) {
             const barcode = data.scannedData.barcode;
-            console.log('[MobileQRScanner] Scan attempt:', barcode);
+            console.log('📡 [MobileQRScanner] Scan attempt:', barcode);
+            console.log('📡 [MobileQRScanner] Processed barcodes:', Array.from(processedBarcodes.current));
+            
             if (!processedBarcodes.current.has(barcode)) {
+              console.log('📡 [MobileQRScanner] Processing new barcode:', barcode);
               setScannedData(data.scannedData);
               setLoading(true);
               processedBarcodes.current.add(barcode);
+              
               try {
+                console.log('📡 [MobileQRScanner] Fetching product data for barcode:', barcode);
                 const productResponse = await fetch(`${backendUrl}/api/products/barcode/${barcode}`);
                 const productData = await productResponse.json();
+                console.log('📡 [MobileQRScanner] Product data response:', productData);
+                
                 if (productData.found) {
-                  console.log('[MobileQRScanner] Product matched:', productData);
+                  console.log('📡 [MobileQRScanner] Product matched:', productData);
                   onProductFound(productData);
                   toast({
                     title: "Product Found!",
@@ -98,7 +114,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                     variant: "default"
                   });
                 } else {
-                  console.warn('[MobileQRScanner] No product found with barcode:', barcode);
+                  console.warn('📡 [MobileQRScanner] No product found with barcode:', barcode);
                   onBarcodeScanned(barcode);
                   toast({
                     title: "Barcode Scanned",
@@ -106,10 +122,12 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                     variant: "default"
                   });
                 }
+                
+                console.log('📡 [MobileQRScanner] Clearing scanned data from backend');
                 await fetch(`${backendUrl}/api/mobile-scanner/clear/${sessionId}`, { method: 'POST' });
                 setScannedData(null);
               } catch (error) {
-                console.error('[MobileQRScanner] Error processing scanned data:', error);
+                console.error('📡 [MobileQRScanner] Error processing scanned data:', error);
                 toast({
                   title: "Error Processing Data",
                   description: "Failed to process scanned barcode data.",
@@ -118,10 +136,14 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
               } finally {
                 setLoading(false);
               }
+            } else {
+              console.log('📡 [MobileQRScanner] Barcode already processed:', barcode);
             }
+          } else {
+            console.log('📡 [MobileQRScanner] No scanned data in response');
           }
         } catch (error) {
-          console.warn('[MobileQRScanner] Polling error:', error);
+          console.warn('📡 [MobileQRScanner] Polling error:', error);
           toast({
             title: "Polling Error",
             description: `Could not reach backend: ${error}`,
@@ -258,6 +280,16 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                       <RefreshCw className="mr-2 h-4 w-4" />
                       Refresh
                     </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        console.log('🧪 [MobileQRScanner] Test scan triggered');
+                        onBarcodeScanned('049000006344'); // Coca-Cola test barcode
+                      }}
+                    >
+                      Test Scan
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -285,6 +317,11 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                   )}
                 </div>
                 
+                <div className="text-xs text-muted-foreground">
+                  <p>Session ID: {sessionId.slice(0, 8)}...</p>
+                  <p>Backend URL: {window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'https://retail-india-pos-master.onrender.com'}</p>
+                </div>
+                
                 {isPolling && (
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -299,10 +336,20 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                       <div>
                         <p className="text-sm font-medium text-blue-800">Barcode Scanned!</p>
                         <p className="text-xs text-blue-600">Processing product data...</p>
+                        <p className="text-xs text-blue-600">Barcode: {scannedData.barcode}</p>
                       </div>
                     </div>
                   </div>
                 )}
+                
+                {/* Debug Info */}
+                <div className="text-xs text-gray-500 space-y-1">
+                  <p>Debug Info:</p>
+                  <p>• Polling: {isPolling ? 'Active' : 'Inactive'}</p>
+                  <p>• Connected: {isConnected ? 'Yes' : 'No'}</p>
+                  <p>• Has Scanned Data: {scannedData ? 'Yes' : 'No'}</p>
+                  <p>• Processed Barcodes: {Array.from(processedBarcodes.current).length}</p>
+                </div>
                 
                 {/* Stop Polling Button */}
                 {isPolling && (

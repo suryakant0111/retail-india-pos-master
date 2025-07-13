@@ -193,14 +193,14 @@ app.post('/api/mobile-scanner/scan/:sessionId', (req, res) => {
   const { sessionId } = req.params;
   const { barcode, timestamp } = req.body;
   
-  console.log('[Backend] Mobile scanner scan request:');
-  console.log('[Backend] Session ID:', sessionId);
-  console.log('[Backend] Barcode:', barcode);
-  console.log('[Backend] Timestamp:', timestamp);
-  console.log('[Backend] Request body:', req.body);
+  console.log('🔍 [Backend] Mobile scanner scan request received!');
+  console.log('🔍 [Backend] Session ID:', sessionId);
+  console.log('🔍 [Backend] Barcode:', barcode);
+  console.log('🔍 [Backend] Timestamp:', timestamp);
+  console.log('🔍 [Backend] Request body:', req.body);
   
   if (!mobileSessions.has(sessionId)) {
-    console.log('[Backend] Session not found, creating new session');
+    console.log('🔍 [Backend] Session not found, creating new session');
     mobileSessions.set(sessionId, {
       connected: false,
       scannedData: null,
@@ -212,19 +212,21 @@ app.post('/api/mobile-scanner/scan/:sessionId', (req, res) => {
   session.scannedData = { barcode, timestamp };
   session.lastActivity = Date.now();
   
-  console.log('[Backend] Updated session data:', session);
-  console.log('[Backend] All sessions:', Array.from(mobileSessions.keys()));
+  console.log('🔍 [Backend] Updated session data:', session);
+  console.log('🔍 [Backend] All active sessions:', Array.from(mobileSessions.keys()));
+  console.log('🔍 [Backend] All session data:', Object.fromEntries(mobileSessions));
   
-  res.json({ success: true });
+  res.json({ success: true, message: 'Barcode received successfully' });
 });
 
 app.get('/api/mobile-scanner/status/:sessionId', (req, res) => {
   const { sessionId } = req.params;
   
-  console.log('[Backend] Mobile scanner status request for session:', sessionId);
+  console.log('📡 [Backend] Mobile scanner status request for session:', sessionId);
+  console.log('📡 [Backend] All active sessions:', Array.from(mobileSessions.keys()));
   
   if (!mobileSessions.has(sessionId)) {
-    console.log('[Backend] Session not found, returning 404');
+    console.log('📡 [Backend] Session not found, returning 404');
     return res.status(404).json({ error: 'Session not found' });
   }
   
@@ -234,11 +236,12 @@ app.get('/api/mobile-scanner/status/:sessionId', (req, res) => {
     scannedData: session.scannedData
   };
   
-  console.log('[Backend] Sending response to PC:', response);
+  console.log('📡 [Backend] Session data:', session);
+  console.log('📡 [Backend] Sending response to PC:', response);
   
   // Clear scanned data after sending
   if (session.scannedData) {
-    console.log('[Backend] Clearing scanned data after sending');
+    console.log('📡 [Backend] Clearing scanned data after sending');
     session.scannedData = null;
   }
   

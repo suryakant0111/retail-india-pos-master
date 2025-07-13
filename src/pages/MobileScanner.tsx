@@ -112,13 +112,20 @@ const MobileScanner = () => {
   };
 
   const handleScan = async (barcode: string) => {
+    console.log('[MobileScanner] Barcode scanned:', barcode);
+    console.log('[MobileScanner] Session ID:', sessionId);
+    
     setLastScanned(barcode);
     toast({
       title: 'Scanned!',
       description: `Barcode: ${barcode}`,
     });
 
-    if (!sessionId) return;
+    if (!sessionId) {
+      console.error('[MobileScanner] No session ID available');
+      setError('No session ID. Cannot send barcode to server.');
+      return;
+    }
 
     try {
       const backendUrl =
@@ -126,18 +133,30 @@ const MobileScanner = () => {
           ? 'http://localhost:3001'
           : 'https://retail-india-pos-master.onrender.com';
 
+      console.log('[MobileScanner] Sending barcode to backend:', backendUrl);
+      console.log('[MobileScanner] Request payload:', { barcode, timestamp: new Date().toISOString() });
+
       const res = await fetch(`${backendUrl}/api/mobile-scanner/scan/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode, timestamp: new Date().toISOString() }),
       });
 
+      console.log('[MobileScanner] Backend response status:', res.status);
+      console.log('[MobileScanner] Backend response ok:', res.ok);
+
       if (!res.ok) {
-        setError('Failed to send barcode to server.');
+        const errorText = await res.text();
+        console.error('[MobileScanner] Backend error response:', errorText);
+        setError(`Failed to send barcode to server. Status: ${res.status}`);
+      } else {
+        const responseData = await res.json();
+        console.log('[MobileScanner] Backend success response:', responseData);
+        setError(''); // Clear any previous errors
       }
     } catch (err) {
-      console.error(err);
-      setError('Network error while sending barcode.');
+      console.error('[MobileScanner] Network error:', err);
+      setError(`Network error while sending barcode: ${err.message}`);
     }
   };
 
