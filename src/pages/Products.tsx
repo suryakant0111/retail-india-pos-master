@@ -286,7 +286,7 @@ const Products = () => {
         description: `Product "${existingProduct.name}" with barcode ${productData.barcode} is already in your inventory.`,
         variant: "destructive"
       });
-      setShowBarcodeScanner(false);
+      // Keep scanner open so user can scan another product
       return;
     }
     
@@ -312,7 +312,6 @@ const Products = () => {
       };
       
       productForm.reset(formData);
-      setShowBarcodeScanner(false);
       setShowAddProductDialog(true);
       return;
     }
@@ -363,13 +362,12 @@ const Products = () => {
       setProductImage(productData.image_url);
     }
     
-    // Close scanner and open add product dialog
-    setShowBarcodeScanner(false);
+    // Keep scanner open and show add product dialog
     setShowAddProductDialog(true);
     
     toast({
       title: "Product Found!",
-      description: `Product "${productData.name || 'Unknown'}" found and form auto-filled. Please add pricing details.`,
+      description: `Product "${productData.name || 'Unknown'}" found and form auto-filled. Keep scanning or close scanner when done.`,
       variant: "default"
     });
   };
@@ -575,8 +573,9 @@ const Products = () => {
             <Button variant="destructive" onClick={() => {
               if (mobileScannerStopRef.current) mobileScannerStopRef.current();
               setIsMobilePolling(false);
+              setShowBarcodeScanner(false);
             }}>
-              Stop Mobile Polling
+              Stop Mobile Scanner
             </Button>
           )}
           <Button onClick={() => setShowAddProductDialog(true)}>
