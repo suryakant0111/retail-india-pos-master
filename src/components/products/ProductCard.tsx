@@ -42,7 +42,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
         {showDeleteButton && onDelete && (
           <button
             type="button"
-            className="absolute top-2 left-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow focus:outline-none"
+            className="absolute top-2 left-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow focus:outline-none z-10"
             title="Delete Product"
             onClick={() => onDelete(product.id)}
           >
@@ -53,7 +53,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
         {showDeleteButton && onEdit && (
           <button
             type="button"
-            className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1 shadow focus:outline-none"
+            className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1 shadow focus:outline-none z-10"
             title="Edit Product"
             onClick={onEdit}
           >
@@ -61,7 +61,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
           </button>
         )}
         {hasLowStock && (
-          <div className="absolute top-2 right-2 bg-amber-500 text-white text-xs px-2 py-1 rounded-full">
+          <div className="absolute bottom-2 left-2 bg-amber-500 text-white text-xs px-2 py-1 rounded-full">
             Low Stock
           </div>
         )}

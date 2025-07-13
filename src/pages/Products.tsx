@@ -43,6 +43,9 @@ const Products = () => {
   // Add global polling state
   const [isMobilePolling, setIsMobilePolling] = useState(false);
   const mobileScannerStopRef = useRef<() => void>();
+  
+  // Debug logging for mobile polling state
+  console.log('🔍 [Products] isMobilePolling state:', isMobilePolling);
   // Bulk add state
   const [bulkAddMode, setBulkAddMode] = useState(false);
   const [pendingProducts, setPendingProducts] = useState<any[]>([]);
@@ -1256,9 +1259,7 @@ const Products = () => {
         open={showBarcodeScanner}
         onOpenChange={(open) => {
           setShowBarcodeScanner(open);
-          if (!open) {
-            setIsMobilePolling(false);
-          }
+          // Don't reset polling state when dialog closes - let user manually stop
         }}
         onProductFound={handleBarcodeProductFound}
         onBarcodeScanned={handleManualBarcodeEntry}

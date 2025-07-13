@@ -43,6 +43,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
       setIsScannerActive(true);
+      console.log('🔍 [MobileQRScanner] Setting isPolling to true');
       setIsPolling(true); // Set external polling state for stop button
       processedBarcodes.current = new Set();
       
