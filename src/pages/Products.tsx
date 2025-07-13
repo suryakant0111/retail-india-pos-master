@@ -334,10 +334,10 @@ const Products = () => {
       }]);
       toast({
         title: "Product Queued",
-        description: `Product '${productData.name || 'Unknown'}' added to bulk list.`,
+        description: `Product '${productData.name || 'Unknown'}' added to bulk list. Keep scanning for more products.`,
         variant: "default"
       });
-      setShowBarcodeScanner(false);
+      // Don't close scanner in bulk mode - keep it open for more scans
       return;
     }
     

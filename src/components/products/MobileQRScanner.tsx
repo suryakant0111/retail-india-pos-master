@@ -192,6 +192,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   };
 
   const stopPolling = () => {
+    console.log('🔍 [MobileQRScanner] Manual stop requested');
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
@@ -199,6 +200,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     setIsPolling(false);
     setIsConnected(false);
     setScannedData(null);
+    processedBarcodes.current.clear();
     toast({
       title: "Polling Stopped",
       description: "Mobile scanning session ended",
@@ -210,191 +212,99 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <Smartphone className="h-5 w-5" />
-            Mobile QR Scanner
+            Mobile Scanner
           </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Scan the QR code with your mobile device to connect for barcode scanning.
-          </p>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* QR Code Display */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Scan QR Code with Mobile</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center space-y-4">
-                {qrCodeUrl ? (
-                <div className="bg-white p-4 rounded-lg border">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
-                    alt="QR Code"
-                    className="mx-auto"
-                    onError={(e) => {
-                      console.error('QR code generation failed, using fallback');
-                      e.currentTarget.style.display = 'none';
-                      const fallbackDiv = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (fallbackDiv) {
-                        fallbackDiv.style.display = 'block';
-                      }
-                    }}
-                  />
-                  <div className="hidden text-center p-4 bg-gray-100 rounded">
-                    <p className="text-sm font-mono break-all">{qrCodeUrl}</p>
-                    <p className="text-xs text-gray-600 mt-2">Copy this URL to your mobile device</p>
-                  </div>
-                </div>
-                ) : (
-                  <div className="bg-white p-4 rounded-lg border">
-                    <div className="flex items-center justify-center h-48">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-600">Generating QR code...</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Scan this QR code with your mobile device to connect for barcode scanning
-                  </p>
-                  
-                  <div className="flex gap-2 justify-center">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={copyQRCodeUrl}
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy URL
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={refreshSession}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Refresh
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        console.log('🧪 [MobileQRScanner] Test scan triggered');
-                        onBarcodeScanned('049000006344'); // Coca-Cola test barcode
-                      }}
-                    >
-                      Test Scan
-                    </Button>
+          <div className="text-center space-y-3">
+            <p className="text-sm font-medium">Scan QR Code with Mobile</p>
+            {qrCodeUrl ? (
+              <div className="bg-white p-3 rounded-lg border">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrCodeUrl)}&margin=2&format=png`}
+                  alt="QR Code"
+                  className="mx-auto"
+                />
+              </div>
+            ) : (
+              <div className="bg-white p-3 rounded-lg border">
+                <div className="flex items-center justify-center h-32">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-xs text-gray-600">Generating QR code...</p>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            )}
+            
+            <div className="flex gap-2 justify-center">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={copyQRCodeUrl}
+              >
+                <Copy className="mr-1 h-3 w-3" />
+                Copy URL
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={refreshSession}
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                Refresh
+              </Button>
+            </div>
+          </div>
 
           {/* Connection Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Connection Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  {isConnected ? (
-                    <>
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                      <span className="text-sm font-medium text-green-700">Mobile Device Connected</span>
-                    </>
-                  ) : (
-                    <>
-                      <Wifi className="h-5 w-5 text-gray-400" />
-                      <span className="text-sm text-gray-600">Waiting for mobile device...</span>
-                    </>
-                  )}
-                </div>
-                
-                <div className="text-xs text-muted-foreground">
-                  <p>Session ID: {sessionId.slice(0, 8)}...</p>
-                  <p>Backend URL: {window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'https://retail-india-pos-master.onrender.com'}</p>
-                </div>
-                
-                {isPolling && (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">Polling for scanned data...</span>
-                  </div>
-                )}
-                
-                {scannedData && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-blue-500" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-800">Barcode Scanned!</p>
-                        <p className="text-xs text-blue-600">Processing product data...</p>
-                        <p className="text-xs text-blue-600">Barcode: {scannedData.barcode}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Debug Info */}
-                <div className="text-xs text-gray-500 space-y-1">
-                  <p>Debug Info:</p>
-                  <p>• Polling: {isPolling ? 'Active' : 'Inactive'}</p>
-                  <p>• Connected: {isConnected ? 'Yes' : 'No'}</p>
-                  <p>• Has Scanned Data: {scannedData ? 'Yes' : 'No'}</p>
-                  <p>• Processed Barcodes: {Array.from(processedBarcodes.current).length}</p>
-                  <p>• Session ID: {sessionId}</p>
-                  <p>• Dialog Open: {open ? 'Yes' : 'No'}</p>
-                </div>
-                
-                {/* Manual Test Buttons */}
-                <div className="space-y-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => {
-                      console.log('🧪 [MobileQRScanner] Manual test - triggering onBarcodeScanned');
-                      onBarcodeScanned('049000006344');
-                    }}
-                  >
-                    Test Manual Scan
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => {
-                      console.log('🧪 [MobileQRScanner] Manual test - checking polling status');
-                      console.log('🧪 [MobileQRScanner] isPolling:', isPolling);
-                      console.log('🧪 [MobileQRScanner] sessionId:', sessionId);
-                      console.log('🧪 [MobileQRScanner] open:', open);
-                    }}
-                  >
-                    Check Status
-                  </Button>
-                </div>
-                
-                {/* Stop Polling Button */}
-                {isPolling && (
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
-                    onClick={stopPolling}
-                    className="w-full"
-                  >
-                    Stop Polling
-                  </Button>
-                )}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              {isConnected ? (
+                <>
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span className="text-sm font-medium text-green-700">Connected</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Waiting for mobile...</span>
+                </>
+              )}
+            </div>
+            
+            {isPolling && (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="text-xs text-muted-foreground">Polling for scans...</span>
               </div>
-            </CardContent>
-          </Card>
+            )}
+            
+            {scannedData && (
+              <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                <p className="text-blue-800 font-medium">Barcode Scanned!</p>
+                <p className="text-blue-600">Barcode: {scannedData.barcode}</p>
+              </div>
+            )}
+            
+            {/* Stop Polling Button */}
+            {isPolling && (
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={stopPolling}
+                className="w-full"
+              >
+                Stop Scanner
+              </Button>
+            )}
+          </div>
 
           {/* Instructions */}
           <Card>
