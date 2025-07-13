@@ -37,31 +37,44 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
 
   // Generate session ID and QR code
   useEffect(() => {
+    console.log('🔍 [MobileQRScanner] Dialog open state changed:', open);
+    
     if (open) {
+      console.log('🔍 [MobileQRScanner] Opening scanner dialog');
       const newSessionId = generateSessionId();
+      console.log('🔍 [MobileQRScanner] Generated session ID:', newSessionId);
       setSessionId(newSessionId);
+      
       // Use local IP address for mobile access, fallback to window.location.origin
       let baseUrl = window.location.origin;
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
         baseUrl = `http://${window.location.hostname}:5173`;
       }
       const qrUrl = `${baseUrl}/mobile-scanner?session=${newSessionId}`;
+      console.log('🔍 [MobileQRScanner] Generated QR URL:', qrUrl);
       setQrCodeUrl(qrUrl);
       setIsConnected(false);
       setScannedData(null);
       processedBarcodes.current = new Set();
+    } else {
+      console.log('🔍 [MobileQRScanner] Closing scanner dialog');
     }
   }, [open]);
 
   // Polling logic using useRef (like cart)
   useEffect(() => {
+    console.log('🔍 [MobileQRScanner] Polling useEffect triggered');
+    console.log('🔍 [MobileQRScanner] Conditions - open:', open, 'sessionId:', sessionId, 'isPolling:', isPolling);
+    
     if (open && sessionId && !isPolling) {
+      console.log('🔍 [MobileQRScanner] Starting polling...');
       setIsPolling(true);
       // Robust backend URL for polling
       let backendUrl = 'https://retail-india-pos-master.onrender.com';
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
         backendUrl = 'http://localhost:3001';
       }
+      console.log('🔍 [MobileQRScanner] Using backend URL:', backendUrl);
       pollIntervalRef.current = setInterval(async () => {
         try {
           console.log('📡 [MobileQRScanner] Polling backend for session:', sessionId);
@@ -206,6 +219,8 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     });
   };
 
+  console.log('🔍 [MobileQRScanner] Rendering component - open:', open, 'sessionId:', sessionId);
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -349,6 +364,34 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                   <p>• Connected: {isConnected ? 'Yes' : 'No'}</p>
                   <p>• Has Scanned Data: {scannedData ? 'Yes' : 'No'}</p>
                   <p>• Processed Barcodes: {Array.from(processedBarcodes.current).length}</p>
+                  <p>• Session ID: {sessionId}</p>
+                  <p>• Dialog Open: {open ? 'Yes' : 'No'}</p>
+                </div>
+                
+                {/* Manual Test Buttons */}
+                <div className="space-y-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => {
+                      console.log('🧪 [MobileQRScanner] Manual test - triggering onBarcodeScanned');
+                      onBarcodeScanned('049000006344');
+                    }}
+                  >
+                    Test Manual Scan
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => {
+                      console.log('🧪 [MobileQRScanner] Manual test - checking polling status');
+                      console.log('🧪 [MobileQRScanner] isPolling:', isPolling);
+                      console.log('🧪 [MobileQRScanner] sessionId:', sessionId);
+                      console.log('🧪 [MobileQRScanner] open:', open);
+                    }}
+                  >
+                    Check Status
+                  </Button>
                 </div>
                 
                 {/* Stop Polling Button */}
