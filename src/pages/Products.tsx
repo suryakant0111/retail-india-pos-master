@@ -280,7 +280,7 @@ const Products = () => {
   const handleBarcodeProductFound = (productData: BarcodeProductData) => {
     console.log('[Products] Received barcode product data:', productData);
     
-    // First check if product already exists in our database
+    // First check if product already exists in our database using Supabase
     const existingProduct = products.find(p => p.barcode === productData.barcode);
     
     if (existingProduct) {
@@ -380,7 +380,7 @@ const Products = () => {
     if (!barcode.trim()) return;
     
     try {
-      // First check if product already exists in our database
+      // First check if product already exists in our database using Supabase
       const existingProduct = products.find(p => p.barcode === barcode.trim());
       
       if (existingProduct) {

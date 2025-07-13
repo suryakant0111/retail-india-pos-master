@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { requireAdmin } from './jwtAuth.js';
-
+import { APIServiceManager } from './api-services/index.js';
 
 // Load env vars from backend/.env
 dotenv.config();
@@ -25,6 +25,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { auth: { persistSession: false } }
 );
+
+// Initialize API Service Manager
+const apiServiceManager = new APIServiceManager();
 
 // In-memory storage for scanner sessions (in production, use Redis or database)
 const scannerSessions = new Map();
@@ -295,132 +298,12 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
     
     console.log(`[Backend] Product not in database, checking external APIs...`);
     
-    // If not in database, try to fetch from online API
-    try {
-      const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-      const data = await response.json();
-      
-      if (data.status === 1 && data.product) {
-        const product = data.product;
-        console.log(`[Backend] Found product in Open Food Facts: ${product.product_name}`);
-        
-        return res.json({
-          found: true,
-          name: product.product_name || product.product_name_en || product.generic_name || 'Unknown Product',
-          price: 0, // Will be set manually
-          barcode: barcode,
-          category: product.categories_tags?.[0]?.replace('en:', '') || 'General',
-          stock: 1,
-          gst: 18,
-          description: product.generic_name || product.brands || product.product_name || '',
-          image_url: product.image_front_url || product.image_url || '',
-          brand: product.brands,
-          ingredients: product.ingredients_text,
-          weight: product.quantity,
-          country: product.countries_tags?.[0],
-          manufacturer: product.manufacturing_places
-        });
-      }
-    } catch (apiError) {
-      console.log('[Backend] Open Food Facts API fetch failed:', apiError);
-    }
+    // Use the API Service Manager to find the product
+    const productData = await apiServiceManager.findProductByBarcode(barcode);
     
-    // Try UPC Item DB as fallback
-    try {
-      const upcResponse = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
-      const upcData = await upcResponse.json();
-      
-      if (upcData.items && upcData.items.length > 0) {
-        const item = upcData.items[0];
-        console.log(`[Backend] Found product in UPC Item DB: ${item.title}`);
-        
-        return res.json({
-          found: true,
-          name: item.title || 'Unknown Product',
-          price: 0, // Will be set manually
-          barcode: barcode,
-          category: item.category || 'General',
-          stock: 1,
-          gst: 18,
-          description: item.description || item.title || '',
-          image_url: item.images?.[0] || '',
-          brand: item.brand,
-          weight: item.dimension,
-          manufacturer: item.brand
-        });
-      }
-    } catch (upcError) {
-      console.log('[Backend] UPC Item DB fetch failed:', upcError);
-    }
-    
-    // Try FoodFarms API (Indian products)
-    try {
-      const foodFarmsResponse = await fetch(`https://api.foodfarms.in/products/search?barcode=${barcode}`, {
-        headers: {
-          'User-Agent': 'Retail-India-POS/1.0'
-        }
-      });
-      
-      if (foodFarmsResponse.ok) {
-        const foodFarmsData = await foodFarmsResponse.json();
-        
-        if (foodFarmsData.products && foodFarmsData.products.length > 0) {
-          const product = foodFarmsData.products[0];
-          console.log(`[Backend] Found product in FoodFarms: ${product.name}`);
-          
-          return res.json({
-            found: true,
-            name: product.name || 'Unknown Product',
-            price: 0, // Will be set manually
-            barcode: barcode,
-            category: product.category || 'Food & Beverages',
-            stock: 1,
-            gst: 18,
-            description: product.description || product.name || '',
-            image_url: product.image_url || '',
-            brand: product.brand,
-            weight: product.weight,
-            manufacturer: product.manufacturer
-          });
-        }
-      }
-    } catch (foodFarmsError) {
-      console.log('[Backend] FoodFarms API fetch failed:', foodFarmsError);
-    }
-    
-    // Try Indian Grocery API (if available)
-    try {
-      const indianGroceryResponse = await fetch(`https://api.indian-grocery.com/products?barcode=${barcode}`, {
-        headers: {
-          'User-Agent': 'Retail-India-POS/1.0'
-        }
-      });
-      
-      if (indianGroceryResponse.ok) {
-        const indianGroceryData = await indianGroceryResponse.json();
-        
-        if (indianGroceryData.products && indianGroceryData.products.length > 0) {
-          const product = indianGroceryData.products[0];
-          console.log(`[Backend] Found product in Indian Grocery API: ${product.name}`);
-          
-          return res.json({
-            found: true,
-            name: product.name || 'Unknown Product',
-            price: 0, // Will be set manually
-            barcode: barcode,
-            category: product.category || 'General',
-            stock: 1,
-            gst: 18,
-            description: product.description || product.name || '',
-            image_url: product.image_url || '',
-            brand: product.brand,
-            weight: product.weight,
-            manufacturer: product.manufacturer
-          });
-        }
-      }
-    } catch (indianGroceryError) {
-      console.log('[Backend] Indian Grocery API fetch failed:', indianGroceryError);
+    if (productData.found) {
+      console.log(`[Backend] Found product in external API: ${productData.name}`);
+      return res.json(productData);
     }
     
     console.log(`[Backend] No product found for barcode: ${barcode}`);
@@ -448,6 +331,12 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+// API Information endpoint
+app.get('/api/product-apis', (req, res) => {
+  const apiInfo = apiServiceManager.getAPIInfo();
+  res.json(apiInfo);
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {

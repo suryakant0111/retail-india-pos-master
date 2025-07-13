@@ -35,6 +35,11 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   const processedBarcodes = useRef<Set<string>>(new Set());
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+  
+  // Set the stop function in the ref
+  useEffect(() => {
+    stopPollingRef.current = stopPolling;
+  }, []);
 
   // Start scanner session when dialog opens
   useEffect(() => {
@@ -202,6 +207,10 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     setScannedData(null);
     setSessionId(''); // Reset session to allow new session creation
     processedBarcodes.current.clear();
+    
+    // Store the stop function in the ref for parent component
+    stopPollingRef.current = stopPolling;
+    
     toast({
       title: "Polling Stopped",
       description: "Mobile scanning session ended",
