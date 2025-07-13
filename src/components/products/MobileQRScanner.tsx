@@ -43,6 +43,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
       setIsScannerActive(true);
+      setIsPolling(true); // Set external polling state for stop button
       processedBarcodes.current = new Set();
       
       // Use local IP address for mobile access, fallback to window.location.origin
