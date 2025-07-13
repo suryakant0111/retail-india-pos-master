@@ -75,106 +75,117 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
         backendUrl = 'http://localhost:3001';
       }
       console.log('🔍 [MobileQRScanner] Using backend URL:', backendUrl);
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          console.log('📡 [MobileQRScanner] Polling backend for session:', sessionId);
-          const response = await fetch(`${backendUrl}/api/mobile-scanner/status/${sessionId}`);
-          console.log('📡 [MobileQRScanner] Response status:', response.status);
-          console.log('📡 [MobileQRScanner] Response ok:', response.ok);
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('📡 [MobileQRScanner] Polling failed:', response.status, errorText);
-            throw new Error(`Polling failed: ${response.status} - ${errorText}`);
-          }
-          
-          const data = await response.json();
-          console.log('📡 [MobileQRScanner] Received data:', data);
-
-          if (data.connected && !isConnected) {
-            console.log('📡 [MobileQRScanner] Mobile device connected!');
-            setIsConnected(true);
-            toast({
-              title: "Mobile Device Connected!",
-              description: "Your mobile device is now connected for barcode scanning.",
-              variant: "default"
-            });
-          }
-
-          if (data.scannedData) {
-            const barcode = data.scannedData.barcode;
-            console.log('📡 [MobileQRScanner] Scan attempt:', barcode);
-            console.log('📡 [MobileQRScanner] Processed barcodes:', Array.from(processedBarcodes.current));
+      
+      const startPolling = () => {
+        console.log('🔍 [MobileQRScanner] Creating polling interval');
+        pollIntervalRef.current = setInterval(async () => {
+          console.log('💓 [MobileQRScanner] Polling heartbeat - interval is running');
+          try {
+            console.log('📡 [MobileQRScanner] Polling backend for session:', sessionId);
+            const response = await fetch(`${backendUrl}/api/mobile-scanner/status/${sessionId}`);
+            console.log('📡 [MobileQRScanner] Response status:', response.status);
+            console.log('📡 [MobileQRScanner] Response ok:', response.ok);
             
-            if (!processedBarcodes.current.has(barcode)) {
-              console.log('📡 [MobileQRScanner] Processing new barcode:', barcode);
-              setScannedData(data.scannedData);
-              setLoading(true);
-              processedBarcodes.current.add(barcode);
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('📡 [MobileQRScanner] Polling failed:', response.status, errorText);
+              throw new Error(`Polling failed: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log('📡 [MobileQRScanner] Received data:', data);
+
+            if (data.connected && !isConnected) {
+              console.log('📡 [MobileQRScanner] Mobile device connected!');
+              setIsConnected(true);
+              toast({
+                title: "Mobile Device Connected!",
+                description: "Your mobile device is now connected for barcode scanning.",
+                variant: "default"
+              });
+            }
+
+            if (data.scannedData) {
+              const barcode = data.scannedData.barcode;
+              console.log('📡 [MobileQRScanner] Scan attempt:', barcode);
+              console.log('📡 [MobileQRScanner] Processed barcodes:', Array.from(processedBarcodes.current));
               
-              try {
-                console.log('📡 [MobileQRScanner] Fetching product data for barcode:', barcode);
-                const productResponse = await fetch(`${backendUrl}/api/products/barcode/${barcode}`);
-                const productData = await productResponse.json();
-                console.log('📡 [MobileQRScanner] Product data response:', productData);
+              if (!processedBarcodes.current.has(barcode)) {
+                console.log('📡 [MobileQRScanner] Processing new barcode:', barcode);
+                setScannedData(data.scannedData);
+                setLoading(true);
+                processedBarcodes.current.add(barcode);
                 
-                if (productData.found) {
-                  console.log('📡 [MobileQRScanner] Product matched:', productData);
-                  onProductFound(productData);
+                try {
+                  console.log('📡 [MobileQRScanner] Fetching product data for barcode:', barcode);
+                  const productResponse = await fetch(`${backendUrl}/api/products/barcode/${barcode}`);
+                  const productData = await productResponse.json();
+                  console.log('📡 [MobileQRScanner] Product data response:', productData);
+                  
+                  if (productData.found) {
+                    console.log('📡 [MobileQRScanner] Product matched:', productData);
+                    onProductFound(productData);
+                    toast({
+                      title: "Product Found!",
+                      description: `Found: ${productData.name} - Form will be auto-filled`,
+                      variant: "default"
+                    });
+                  } else {
+                    console.warn('📡 [MobileQRScanner] No product found with barcode:', barcode);
+                    onBarcodeScanned(barcode);
+                    toast({
+                      title: "Barcode Scanned",
+                      description: `Barcode: ${barcode} - Couldn't find product details, you can add manually`,
+                      variant: "default"
+                    });
+                  }
+                  
+                  console.log('📡 [MobileQRScanner] Clearing scanned data from backend');
+                  await fetch(`${backendUrl}/api/mobile-scanner/clear/${sessionId}`, { method: 'POST' });
+                  setScannedData(null);
+                } catch (error) {
+                  console.error('📡 [MobileQRScanner] Error processing scanned data:', error);
                   toast({
-                    title: "Product Found!",
-                    description: `Found: ${productData.name} - Form will be auto-filled`,
-                    variant: "default"
+                    title: "Error Processing Data",
+                    description: "Failed to process scanned barcode data.",
+                    variant: "destructive"
                   });
-                } else {
-                  console.warn('📡 [MobileQRScanner] No product found with barcode:', barcode);
-                  onBarcodeScanned(barcode);
-                  toast({
-                    title: "Barcode Scanned",
-                    description: `Barcode: ${barcode} - Couldn't find product details, you can add manually`,
-                    variant: "default"
-                  });
+                } finally {
+                  setLoading(false);
                 }
-                
-                console.log('📡 [MobileQRScanner] Clearing scanned data from backend');
-                await fetch(`${backendUrl}/api/mobile-scanner/clear/${sessionId}`, { method: 'POST' });
-                setScannedData(null);
-              } catch (error) {
-                console.error('📡 [MobileQRScanner] Error processing scanned data:', error);
-                toast({
-                  title: "Error Processing Data",
-                  description: "Failed to process scanned barcode data.",
-                  variant: "destructive"
-                });
-              } finally {
-                setLoading(false);
+              } else {
+                console.log('📡 [MobileQRScanner] Barcode already processed:', barcode);
               }
             } else {
-              console.log('📡 [MobileQRScanner] Barcode already processed:', barcode);
+              console.log('📡 [MobileQRScanner] No scanned data in response');
             }
-          } else {
-            console.log('📡 [MobileQRScanner] No scanned data in response');
+          } catch (error) {
+            console.warn('📡 [MobileQRScanner] Polling error:', error);
+            toast({
+              title: "Polling Error",
+              description: `Could not reach backend: ${error}`,
+              variant: "destructive"
+            });
           }
-        } catch (error) {
-          console.warn('📡 [MobileQRScanner] Polling error:', error);
-          toast({
-            title: "Polling Error",
-            description: `Could not reach backend: ${error}`,
-            variant: "destructive"
-          });
-        }
-      }, 2000);
+        }, 2000);
+      };
+      
+      // Start polling immediately
+      startPolling();
     }
+    
     // Expose stopPolling to parent
     stopPollingRef.current = stopPolling;
+    
     return () => {
+      console.log('🔍 [MobileQRScanner] Cleaning up polling interval');
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
       // Do not setIsPolling(false) here; only stopPolling does that
     };
-  }, [open, sessionId, isConnected, onProductFound, onBarcodeScanned, toast, isPolling, setIsPolling, stopPollingRef]);
+  }, [open, sessionId, isPolling, setIsPolling, stopPollingRef, isConnected, onProductFound, onBarcodeScanned, toast]);
 
   const generateSessionId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
