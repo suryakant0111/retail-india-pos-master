@@ -556,7 +556,10 @@ const Products = () => {
           <Button variant="outline" onClick={() => setShowAnalytics(!showAnalytics)}>
             Analytics
           </Button>
-          <Button variant="outline" onClick={() => setShowBarcodeScanner(true)}>
+          <Button variant="outline" onClick={() => {
+            setShowBarcodeScanner(true);
+            setIsMobilePolling(true);
+          }}>
             <QrCode className="mr-2 h-4 w-4" /> Mobile QR Scan
           </Button>
           {/* Test barcode scanning */}
@@ -1252,7 +1255,12 @@ const Products = () => {
       {/* Mobile QR Scanner */}
       <MobileQRScanner
         open={showBarcodeScanner}
-        onOpenChange={setShowBarcodeScanner}
+        onOpenChange={(open) => {
+          setShowBarcodeScanner(open);
+          if (!open) {
+            setIsMobilePolling(false);
+          }
+        }}
         onProductFound={handleBarcodeProductFound}
         onBarcodeScanned={handleManualBarcodeEntry}
         isPolling={isMobilePolling}

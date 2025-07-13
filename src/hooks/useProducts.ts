@@ -41,7 +41,13 @@ export const useProducts = () => {
 
   // Add product
   const addProduct = useCallback(async (productData: Partial<Product>) => {
-    if (!profile?.shop_id) return;
+    console.log('🔍 [useProducts] addProduct called with data:', productData);
+    console.log('🔍 [useProducts] profile?.shop_id:', profile?.shop_id);
+    
+    if (!profile?.shop_id) {
+      console.error('🔍 [useProducts] No shop_id available, cannot add product');
+      return;
+    }
     
     try {
       const newProduct = {
@@ -50,13 +56,18 @@ export const useProducts = () => {
         isActive: true
       };
       
+      console.log('🔍 [useProducts] Attempting to insert product:', newProduct);
+      
       const { data, error } = await supabase
         .from('products')
         .insert([newProduct])
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔍 [useProducts] Supabase error:', error);
+        throw error;
+      }
       
       setProducts(prev => [data, ...prev]);
       toast({

@@ -31,6 +31,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [scannedData, setScannedData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [isPollingActive, setIsPollingActive] = useState(false);
   const processedBarcodes = useRef<Set<string>>(new Set());
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
@@ -66,6 +67,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     if (!sessionId || !open) return;
 
     console.log('🔍 [MobileQRScanner] Starting simple polling for session:', sessionId);
+    setIsPollingActive(true);
     
     const interval = setInterval(async () => {
       try {
@@ -159,6 +161,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
 
     return () => {
       clearInterval(interval);
+      setIsPollingActive(false);
       console.log('📡 [MobileQRScanner] Polling stopped for session:', sessionId);
     };
   }, [sessionId, open, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
@@ -197,6 +200,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
+    setIsPollingActive(false);
     setIsPolling(false);
     setIsConnected(false);
     setScannedData(null);
@@ -208,7 +212,8 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     });
   };
 
-  console.log('🔍 [MobileQRScanner] Rendering component - open:', open, 'sessionId:', sessionId);
+  console.log('🔍 [MobileQRScanner] Rendering component - open:', open, 'sessionId:', sessionId, 'isPolling:', isPolling, 'isPollingActive:', isPollingActive);
+  console.log('🔍 [MobileQRScanner] Stop button should show when isPollingActive is true. Current value:', isPollingActive);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -294,7 +299,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
             )}
             
             {/* Stop Polling Button */}
-            {isPolling && (
+            {isPollingActive && (
               <Button 
                 variant="destructive" 
                 size="sm" 
