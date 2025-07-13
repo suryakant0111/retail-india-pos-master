@@ -56,11 +56,12 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       setIsConnected(false);
       setScannedData(null);
     }
-  }, [open, isScannerActive]);
+    // Don't reset scanner when dialog closes - keep it running
+  }, [open, isScannerActive, setIsPolling]);
 
   // Simple polling for scanned barcodes (copied from working POS scanner)
   useEffect(() => {
-    if (!sessionId || !isScannerActive) return;
+    if (!sessionId) return;
 
     console.log('🔍 [MobileQRScanner] Starting simple polling for session:', sessionId);
     
@@ -158,7 +159,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       clearInterval(interval);
       console.log('📡 [MobileQRScanner] Polling stopped for session:', sessionId);
     };
-  }, [sessionId, isScannerActive, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
+  }, [sessionId, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
 
   const generateSessionId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
