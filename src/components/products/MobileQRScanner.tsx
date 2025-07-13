@@ -31,20 +31,19 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [scannedData, setScannedData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [isPollingActive, setIsPollingActive] = useState(false);
+  const [isScannerActive, setIsScannerActive] = useState(false);
   const processedBarcodes = useRef<Set<string>>(new Set());
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Generate session ID and QR code only when scanner is first opened
+  // Start scanner session when dialog opens
   useEffect(() => {
-    console.log('🔍 [MobileQRScanner] Dialog open state changed:', open);
-    
-    if (open && !sessionId) {
-      console.log('🔍 [MobileQRScanner] Opening scanner dialog for first time');
+    if (open && !isScannerActive) {
+      console.log('🔍 [MobileQRScanner] Starting scanner session');
       const newSessionId = generateSessionId();
-      console.log('🔍 [MobileQRScanner] Generated session ID:', newSessionId);
       setSessionId(newSessionId);
+      setIsScannerActive(true);
+      processedBarcodes.current = new Set();
       
       // Use local IP address for mobile access, fallback to window.location.origin
       let baseUrl = window.location.origin;
@@ -52,22 +51,17 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
         baseUrl = `http://${window.location.hostname}:5173`;
       }
       const qrUrl = `${baseUrl}/mobile-scanner?session=${newSessionId}`;
-      console.log('🔍 [MobileQRScanner] Generated QR URL:', qrUrl);
       setQrCodeUrl(qrUrl);
       setIsConnected(false);
       setScannedData(null);
-      processedBarcodes.current = new Set();
-    } else if (!open) {
-      console.log('🔍 [MobileQRScanner] Closing scanner dialog (polling continues)');
     }
-  }, [open, sessionId]);
+  }, [open, isScannerActive]);
 
   // Simple polling for scanned barcodes (copied from working POS scanner)
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !isScannerActive) return;
 
     console.log('🔍 [MobileQRScanner] Starting simple polling for session:', sessionId);
-    setIsPollingActive(true);
     
     const interval = setInterval(async () => {
       try {
@@ -161,10 +155,9 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
 
     return () => {
       clearInterval(interval);
-      setIsPollingActive(false);
       console.log('📡 [MobileQRScanner] Polling stopped for session:', sessionId);
     };
-  }, [sessionId, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
+  }, [sessionId, isScannerActive, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
 
   const generateSessionId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -200,7 +193,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
-    setIsPollingActive(false);
+    setIsScannerActive(false);
     setIsPolling(false);
     setIsConnected(false);
     setScannedData(null);
@@ -213,8 +206,8 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     });
   };
 
-  console.log('🔍 [MobileQRScanner] Rendering component - open:', open, 'sessionId:', sessionId, 'isPolling:', isPolling, 'isPollingActive:', isPollingActive);
-  console.log('🔍 [MobileQRScanner] Stop button should show when isPollingActive is true. Current value:', isPollingActive);
+  console.log('🔍 [MobileQRScanner] Rendering component - open:', open, 'sessionId:', sessionId, 'isPolling:', isPolling, 'isScannerActive:', isScannerActive);
+  console.log('🔍 [MobileQRScanner] Stop button should show when isScannerActive is true. Current value:', isScannerActive);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -300,7 +293,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
             )}
             
             {/* Stop Polling Button */}
-            {isPollingActive && (
+            {isScannerActive && (
               <Button 
                 variant="destructive" 
                 size="sm" 
