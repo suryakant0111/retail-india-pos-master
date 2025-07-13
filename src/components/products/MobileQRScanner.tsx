@@ -36,12 +36,12 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Generate session ID and QR code
+  // Generate session ID and QR code only when scanner is first opened
   useEffect(() => {
     console.log('🔍 [MobileQRScanner] Dialog open state changed:', open);
     
-    if (open) {
-      console.log('🔍 [MobileQRScanner] Opening scanner dialog');
+    if (open && !sessionId) {
+      console.log('🔍 [MobileQRScanner] Opening scanner dialog for first time');
       const newSessionId = generateSessionId();
       console.log('🔍 [MobileQRScanner] Generated session ID:', newSessionId);
       setSessionId(newSessionId);
@@ -57,14 +57,14 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       setIsConnected(false);
       setScannedData(null);
       processedBarcodes.current = new Set();
-    } else {
-      console.log('🔍 [MobileQRScanner] Closing scanner dialog');
+    } else if (!open) {
+      console.log('🔍 [MobileQRScanner] Closing scanner dialog (polling continues)');
     }
-  }, [open]);
+  }, [open, sessionId]);
 
   // Simple polling for scanned barcodes (copied from working POS scanner)
   useEffect(() => {
-    if (!sessionId || !open) return;
+    if (!sessionId) return;
 
     console.log('🔍 [MobileQRScanner] Starting simple polling for session:', sessionId);
     setIsPollingActive(true);
@@ -164,7 +164,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
       setIsPollingActive(false);
       console.log('📡 [MobileQRScanner] Polling stopped for session:', sessionId);
     };
-  }, [sessionId, open, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
+  }, [sessionId, isConnected, onProductFound, onBarcodeScanned, toast, processedBarcodes]);
 
   const generateSessionId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -204,6 +204,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
     setIsPolling(false);
     setIsConnected(false);
     setScannedData(null);
+    setSessionId(''); // Reset session to allow new session creation
     processedBarcodes.current.clear();
     toast({
       title: "Polling Stopped",
