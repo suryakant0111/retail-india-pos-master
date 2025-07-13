@@ -277,10 +277,23 @@ const Products = () => {
   const handleBarcodeProductFound = (productData: BarcodeProductData) => {
     console.log('[Products] Received barcode product data:', productData);
     
+    // First check if product already exists in our database
+    const existingProduct = products.find(p => p.barcode === productData.barcode);
+    
+    if (existingProduct) {
+      toast({
+        title: "Product Already Exists",
+        description: `Product "${existingProduct.name}" with barcode ${productData.barcode} is already in your inventory.`,
+        variant: "destructive"
+      });
+      setShowBarcodeScanner(false);
+      return;
+    }
+    
     if (!productData.found) {
       toast({
         title: "Product Not Found",
-        description: `No product data found for barcode: ${productData.barcode}. You can still add it manually.`,
+        description: `Couldn't find product details for barcode: ${productData.barcode}. You can still add it manually.`,
         variant: "destructive"
       });
       
@@ -355,8 +368,8 @@ const Products = () => {
     setShowAddProductDialog(true);
     
     toast({
-      title: "Product Data Loaded",
-      description: `Product "${productData.name || 'Unknown'}" loaded from barcode scan. Please add pricing details.`,
+      title: "Product Found!",
+      description: `Product "${productData.name || 'Unknown'}" found and form auto-filled. Please add pricing details.`,
       variant: "default"
     });
   };
@@ -366,6 +379,18 @@ const Products = () => {
     if (!barcode.trim()) return;
     
     try {
+      // First check if product already exists in our database
+      const existingProduct = products.find(p => p.barcode === barcode.trim());
+      
+      if (existingProduct) {
+        toast({
+          title: "Product Already Exists",
+          description: `Product "${existingProduct.name}" with barcode ${barcode.trim()} is already in your inventory.`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Use the same backend endpoint that the mobile scanner uses
       let backendUrl = 'https://retail-india-pos-master.onrender.com';
       if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')) {
@@ -377,10 +402,10 @@ const Products = () => {
       
       if (productData.found) {
         handleBarcodeProductFound(productData);
-    } else {
+      } else {
         toast({
           title: "Product Not Found",
-          description: `No product data found for barcode: ${barcode.trim()}. You can still add it manually.`,
+          description: `Couldn't find product details for barcode: ${barcode.trim()}. You can still add it manually.`,
           variant: "destructive"
         });
         

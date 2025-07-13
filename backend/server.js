@@ -350,6 +350,76 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
       console.log('[Backend] UPC Item DB fetch failed:', upcError);
     }
     
+    // Try FoodFarms API (Indian products)
+    try {
+      const foodFarmsResponse = await fetch(`https://api.foodfarms.in/products/search?barcode=${barcode}`, {
+        headers: {
+          'User-Agent': 'Retail-India-POS/1.0'
+        }
+      });
+      
+      if (foodFarmsResponse.ok) {
+        const foodFarmsData = await foodFarmsResponse.json();
+        
+        if (foodFarmsData.products && foodFarmsData.products.length > 0) {
+          const product = foodFarmsData.products[0];
+          console.log(`[Backend] Found product in FoodFarms: ${product.name}`);
+          
+          return res.json({
+            found: true,
+            name: product.name || 'Unknown Product',
+            price: 0, // Will be set manually
+            barcode: barcode,
+            category: product.category || 'Food & Beverages',
+            stock: 1,
+            gst: 18,
+            description: product.description || product.name || '',
+            image_url: product.image_url || '',
+            brand: product.brand,
+            weight: product.weight,
+            manufacturer: product.manufacturer
+          });
+        }
+      }
+    } catch (foodFarmsError) {
+      console.log('[Backend] FoodFarms API fetch failed:', foodFarmsError);
+    }
+    
+    // Try Indian Grocery API (if available)
+    try {
+      const indianGroceryResponse = await fetch(`https://api.indian-grocery.com/products?barcode=${barcode}`, {
+        headers: {
+          'User-Agent': 'Retail-India-POS/1.0'
+        }
+      });
+      
+      if (indianGroceryResponse.ok) {
+        const indianGroceryData = await indianGroceryResponse.json();
+        
+        if (indianGroceryData.products && indianGroceryData.products.length > 0) {
+          const product = indianGroceryData.products[0];
+          console.log(`[Backend] Found product in Indian Grocery API: ${product.name}`);
+          
+          return res.json({
+            found: true,
+            name: product.name || 'Unknown Product',
+            price: 0, // Will be set manually
+            barcode: barcode,
+            category: product.category || 'General',
+            stock: 1,
+            gst: 18,
+            description: product.description || product.name || '',
+            image_url: product.image_url || '',
+            brand: product.brand,
+            weight: product.weight,
+            manufacturer: product.manufacturer
+          });
+        }
+      }
+    } catch (indianGroceryError) {
+      console.log('[Backend] Indian Grocery API fetch failed:', indianGroceryError);
+    }
+    
     console.log(`[Backend] No product found for barcode: ${barcode}`);
     // If no product found anywhere
     return res.json({

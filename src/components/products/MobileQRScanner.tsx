@@ -94,7 +94,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                   onProductFound(productData);
                   toast({
                     title: "Product Found!",
-                    description: `Found: ${productData.name}`,
+                    description: `Found: ${productData.name} - Form will be auto-filled`,
                     variant: "default"
                   });
                 } else {
@@ -102,7 +102,7 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                   onBarcodeScanned(barcode);
                   toast({
                     title: "Barcode Scanned",
-                    description: `Barcode: ${barcode} - No product data found`,
+                    description: `Barcode: ${barcode} - Couldn't find product details, you can add manually`,
                     variant: "default"
                   });
                 }
@@ -399,7 +399,11 @@ export const MobileQRScanner: React.FC<MobileQRScannerProps> = ({
                       <div>• Lay's Chips: 028400090000</div>
                       <div>• Diet Coke: 049000006351</div>
                       <div>• Sprite: 049000006368</div>
+                      <div>• Indian Products: Try any 12-13 digit barcode</div>
                     </div>
+                    <p className="text-xs text-blue-600 mt-2">
+                      💡 The system will search multiple databases including Open Food Facts, UPC Item DB, and Indian product databases.
+                    </p>
                   </div>
                 </div>
               </div>
