@@ -15,8 +15,15 @@ import { AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useProfile } from '@/hooks/useProfile';
 import * as XLSX from 'xlsx';
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Flag } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+
+// Helper to convert a UTC date string to IST Date object
+function toIST(dateString: string) {
+  const date = new Date(dateString);
+  // IST is UTC+5:30
+  return new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+}
 
 const Dashboard = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -573,6 +580,12 @@ const Dashboard = () => {
     setCurrentPage(1);
   }, [filterTransactionStartDate, filterTransactionEndDate, filterTransactionCity, filterTransactionPaymentMethod, filterTransactionProduct]);
 
+  // Calculate paid and pending totals for paginated and filtered sets
+  const paidTotal = paginatedTransactions.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'paid' ? (Number(invoice.total) || 0) : 0), 0);
+  const pendingTotal = paginatedTransactions.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'pending' ? (Number(invoice.total) || 0) : 0), 0);
+  const paidTotalAll = filteredDisplayInvoices.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'paid' ? (Number(invoice.total) || 0) : 0), 0);
+  const pendingTotalAll = filteredDisplayInvoices.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'pending' ? (Number(invoice.total) || 0) : 0), 0);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
@@ -624,22 +637,22 @@ const Dashboard = () => {
       </div>
       {/* Stock Alerts Section */}
       {lowStockProducts.length > 0 && (
-        <Card className="mb-6 border-l-4 border-amber-500 bg-amber-50">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <AlertTriangle className="text-amber-500" />
-            <CardTitle className="text-amber-700">Stock Alerts</CardTitle>
+        <Card className="mb-4">
+          <CardHeader className="flex flex-row items-center gap-2 pb-1 pt-2 px-3">
+            <AlertTriangle className="text-amber-500 w-4 h-4 mr-1" />
+            <CardTitle className="text-amber-700 text-base font-semibold">Stock Alerts</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
+          <CardContent className="py-1 px-3">
+            <ul className="divide-y divide-gray-100">
               {lowStockProducts.map((product) => (
-                <div key={product.id} className="flex items-center justify-between text-sm">
-                  <Link to={`/products?highlight=${product.id}`} className="font-medium text-blue-700 hover:underline">
+                <li key={product.id} className="flex items-center justify-between py-1 text-xs">
+                  <Link to={`/products?highlight=${product.id}`} className="font-medium text-blue-700 hover:underline truncate max-w-[160px]">
                     {product.name}
                   </Link>
-                  <span className="text-amber-700">Stock: {product.stock} (Min: {product.minStock})</span>
-                </div>
+                  <span className="text-amber-700 font-mono text-xs ml-2 whitespace-nowrap">{product.stock} / min {product.minStock}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -721,7 +734,185 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
-            {/* Recent Transactions Section */}
+            {/* Sales Trend Analysis - moved to its own card above Recent Transactions */}
+            <Card className="col-span-full mb-6">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Sales Trend Analysis</CardTitle>
+                    <CardDescription>
+                      {salesTrendData.length > 0 
+                        ? chartTimeFilter === 'today' 
+                          ? `Showing ${salesTrendData.length} transactions from today`
+                          : chartTimeFilter === 'custom'
+                          ? `Showing ${salesTrendData.length} transactions from custom date range`
+                          : salesTrendData[0]?.isAggregated
+                          ? `Showing ${salesTrendData.length} daily totals from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
+                          : `Showing ${salesTrendData.length} transactions from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
+                        : 'No data available'
+                      }
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-1">
+                    {/* Chart filter buttons */}
+                    <Button
+                      variant={chartTimeFilter === 'today' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setChartTimeFilter('today');
+                        console.log('Today filter clicked');
+                      }}
+                    >
+                      Today ({salesTrendData.length})
+                    </Button>
+                    <Button
+                      variant={chartTimeFilter === 'week' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setChartTimeFilter('week');
+                        console.log('Week filter clicked');
+                      }}
+                    >
+                      Week ({salesTrendData.length})
+                    </Button>
+                    <Button
+                      variant={chartTimeFilter === 'month' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setChartTimeFilter('month');
+                        console.log('Month filter clicked');
+                      }}
+                    >
+                      Month ({salesTrendData.length})
+                    </Button>
+                    <Button
+                      variant={chartTimeFilter === 'year' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setChartTimeFilter('year');
+                        console.log('Year filter clicked');
+                      }}
+                    >
+                      Year ({salesTrendData.length})
+                    </Button>
+                  </div>
+                  {/* Custom Date Range Inputs */}
+                  <div className="flex gap-2 mt-2">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Start Date</label>
+                      <input 
+                        type="date" 
+                        value={chartCustomStartDate} 
+                        onChange={e => {
+                          setChartCustomStartDate(e.target.value);
+                          setChartTimeFilter('custom');
+                        }} 
+                        className="border p-1 rounded text-xs"
+                        placeholder="Start date"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">End Date</label>
+                      <input 
+                        type="date" 
+                        value={chartCustomEndDate} 
+                        onChange={e => {
+                          setChartCustomEndDate(e.target.value);
+                          setChartTimeFilter('custom');
+                        }} 
+                        className="border p-1 rounded text-xs"
+                        placeholder="End date"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={salesTrendData}
+                      margin={{
+                        top: 20,
+                        left: 12,
+                        right: 12,
+                        bottom: 20,
+                      }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="formattedDate"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        fontSize={12}
+                      />
+                      <YAxis
+                        tickFormatter={(value) => `₹${value / 1000}K`}
+                        fontSize={12}
+                      />
+                      <Tooltip
+                        formatter={(value) => new Intl.NumberFormat('en-IN', { 
+                          style: 'currency', 
+                          currency: 'INR', 
+                          maximumFractionDigits: 0 
+                        }).format(Number(value))}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="sales"
+                        stroke="#2563eb"
+                        strokeWidth={3}
+                        dot={{
+                          fill: "#2563eb",
+                          r: 4,
+                          strokeWidth: 2,
+                          stroke: "white"
+                        }}
+                        activeDot={{
+                          r: 6,
+                          strokeWidth: 2,
+                          stroke: "white"
+                        }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+              <CardFooter className="flex-col items-start gap-2 text-sm">
+                <div className="flex gap-2 leading-none font-medium">
+                  {salesTrendData.length > 1 ? (
+                    (() => {
+                      const firstValue = salesTrendData[0]?.sales || 0;
+                      const lastValue = salesTrendData[salesTrendData.length - 1]?.sales || 0;
+                      const change = lastValue - firstValue;
+                      const percentage = firstValue > 0 ? ((change / firstValue) * 100) : 0;
+                      return (
+                        <>
+                          {change >= 0 ? 'Trending up' : 'Trending down'} by {Math.abs(percentage).toFixed(1)}% this period
+                          <TrendingUp className={`h-4 w-4 ${change < 0 ? 'rotate-180' : ''}`} />
+                        </>
+                      );
+                    })()
+                  ) : (
+                    'No trend data available'
+                  )}
+                </div>
+                <div className="text-muted-foreground leading-none">
+                  {salesTrendData.length > 0 
+                    ? chartTimeFilter === 'today'
+                      ? 'Showing individual transaction amounts from today'
+                      : chartTimeFilter === 'custom'
+                      ? 'Showing individual transaction amounts from custom date range'
+                      : salesTrendData[0]?.isAggregated
+                      ? `Showing daily aggregated totals from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
+                      : `Showing individual transaction amounts from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
+                    : 'No data available'
+                  }
+                </div>
+              </CardFooter>
+            </Card>
+            {/* Recent Transactions Section - fix product name cell for long names */}
             <Card className="col-span-full">
               <CardHeader>
                 <CardTitle>Recent Transactions</CardTitle>
@@ -729,186 +920,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
-                   <Card className="col-span-full mb-6">
-                     <CardHeader>
-                       <div className="flex items-center justify-between">
-                         <div>
-                           <CardTitle>Sales Trend Analysis</CardTitle>
-                           <CardDescription>
-                             {salesTrendData.length > 0 
-                               ? chartTimeFilter === 'today' 
-                                 ? `Showing ${salesTrendData.length} transactions from today`
-                                 : chartTimeFilter === 'custom'
-                                 ? `Showing ${salesTrendData.length} transactions from custom date range`
-                                 : salesTrendData[0]?.isAggregated
-                                 ? `Showing ${salesTrendData.length} daily totals from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
-                                 : `Showing ${salesTrendData.length} transactions from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
-                               : 'No data available'
-                             }
-                           </CardDescription>
-                         </div>
-                         <div className="flex gap-1">
-                           <Button
-                             variant={chartTimeFilter === 'today' ? 'default' : 'outline'}
-                             size="sm"
-                             onClick={() => {
-                               setChartTimeFilter('today');
-                               console.log('Today filter clicked');
-                             }}
-                           >
-                             Today ({salesTrendData.length})
-                           </Button>
-                           <Button
-                             variant={chartTimeFilter === 'week' ? 'default' : 'outline'}
-                             size="sm"
-                             onClick={() => {
-                               setChartTimeFilter('week');
-                               console.log('Week filter clicked');
-                             }}
-                           >
-                             Week ({salesTrendData.length})
-                           </Button>
-                           <Button
-                             variant={chartTimeFilter === 'month' ? 'default' : 'outline'}
-                             size="sm"
-                             onClick={() => {
-                               setChartTimeFilter('month');
-                               console.log('Month filter clicked');
-                             }}
-                           >
-                             Month ({salesTrendData.length})
-                           </Button>
-                           <Button
-                             variant={chartTimeFilter === 'year' ? 'default' : 'outline'}
-                             size="sm"
-                             onClick={() => {
-                               setChartTimeFilter('year');
-                               console.log('Year filter clicked');
-                             }}
-                           >
-                             Year ({salesTrendData.length})
-                           </Button>
-                         </div>
-                         
-                         {/* Custom Date Range Inputs - Always visible on left side */}
-                         <div className="flex gap-2 mt-2">
-                           <div>
-                             <label className="block text-xs font-medium mb-1">Start Date</label>
-                             <input 
-                               type="date" 
-                               value={chartCustomStartDate} 
-                               onChange={e => {
-                                 setChartCustomStartDate(e.target.value);
-                                 setChartTimeFilter('custom');
-                               }} 
-                               className="border p-1 rounded text-xs"
-                               placeholder="Start date"
-                             />
-                           </div>
-                           <div>
-                             <label className="block text-xs font-medium mb-1">End Date</label>
-                             <input 
-                               type="date" 
-                               value={chartCustomEndDate} 
-                               onChange={e => {
-                                 setChartCustomEndDate(e.target.value);
-                                 setChartTimeFilter('custom');
-                               }} 
-                               className="border p-1 rounded text-xs"
-                               placeholder="End date"
-                             />
-                           </div>
-                         </div>
-                       </div>
-                     </CardHeader>
-                     <CardContent>
-                       <div className="h-[300px]">
-                         <ResponsiveContainer width="100%" height="100%">
-                           <LineChart
-                             data={salesTrendData}
-                             margin={{
-                               top: 20,
-                               left: 12,
-                               right: 12,
-                               bottom: 20,
-                             }}
-                           >
-                             <CartesianGrid strokeDasharray="3 3" />
-                             <XAxis
-                               dataKey="formattedDate"
-                               tickLine={false}
-                               axisLine={false}
-                               tickMargin={8}
-                               fontSize={12}
-                             />
-                             <YAxis
-                               tickFormatter={(value) => `₹${value / 1000}K`}
-                               fontSize={12}
-                             />
-                             <Tooltip
-                               formatter={(value) => new Intl.NumberFormat('en-IN', { 
-                                 style: 'currency', 
-                                 currency: 'INR', 
-                                 maximumFractionDigits: 0 
-                               }).format(Number(value))}
-                             />
-                             <Line
-                               type="monotone"
-                               dataKey="sales"
-                               stroke="#2563eb"
-                               strokeWidth={3}
-                               dot={{
-                                 fill: "#2563eb",
-                                 r: 4,
-                                 strokeWidth: 2,
-                                 stroke: "white"
-                               }}
-                               activeDot={{
-                                 r: 6,
-                                 strokeWidth: 2,
-                                 stroke: "white"
-                               }}
-                             />
-                           </LineChart>
-                         </ResponsiveContainer>
-                       </div>
-                     </CardContent>
-                     <CardFooter className="flex-col items-start gap-2 text-sm">
-                       <div className="flex gap-2 leading-none font-medium">
-                         {salesTrendData.length > 1 ? (
-                           <>
-                             {(() => {
-                               const firstValue = salesTrendData[0]?.sales || 0;
-                               const lastValue = salesTrendData[salesTrendData.length - 1]?.sales || 0;
-                               const change = lastValue - firstValue;
-                               const percentage = firstValue > 0 ? ((change / firstValue) * 100) : 0;
-                               return (
-                                 <>
-                                   {change >= 0 ? 'Trending up' : 'Trending down'} by {Math.abs(percentage).toFixed(1)}% this period
-                                   <TrendingUp className={`h-4 w-4 ${change < 0 ? 'rotate-180' : ''}`} />
-                                 </>
-                               );
-                             })()}
-                           </>
-                         ) : (
-                           'No trend data available'
-                         )}
-                       </div>
-                       <div className="text-muted-foreground leading-none">
-                         {salesTrendData.length > 0 
-                           ? chartTimeFilter === 'today'
-                             ? 'Showing individual transaction amounts from today'
-                             : chartTimeFilter === 'custom'
-                             ? 'Showing individual transaction amounts from custom date range'
-                             : salesTrendData[0]?.isAggregated
-                             ? `Showing daily aggregated totals from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
-                             : `Showing individual transaction amounts from last ${chartTimeFilter}${chartTimeFilter === 'week' || chartTimeFilter === 'month' || chartTimeFilter === 'year' ? 's' : ''}`
-                           : 'No data available'
-                         }
-                       </div>
-                     </CardFooter>
-                   </Card>
-                                     {/* Debug Info */}
+                   {/* Debug Info */}
                    {filterTransactionStartDate || filterTransactionEndDate ? (
                      <div className="p-2 bg-yellow-50 border-l-4 border-yellow-400 mb-2">
                        <div className="text-xs text-yellow-800">
@@ -1057,7 +1069,7 @@ const Dashboard = () => {
                           <td>{invoice.customer?.city || invoice.customer?.address || '-'}</td>
                           <td>
                             {(invoice.items || []).map((item: any, idx: number) => (
-                              <span key={idx} className="block whitespace-nowrap">
+                              <span key={idx} className="block whitespace-normal break-words max-w-xs truncate" title={item.product?.name || '-'}>
                                 {item.product?.name || '-'}
                                 {item.quantity !== undefined && (
                                   <span className="ml-1 text-xs text-muted-foreground">x{item.quantity}</span>
@@ -1069,23 +1081,34 @@ const Dashboard = () => {
                             ))}
                           </td>
                           <td>
-                            {new Intl.NumberFormat('en-IN', {
-                              style: 'currency',
-                              currency: 'INR',
-                            }).format(invoice.total)}
-                          </td>
-                          <td>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               invoice.paymentStatus === 'paid'
                                 ? 'bg-green-100 text-green-800'
                                 : invoice.paymentStatus === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
+                                ? 'bg-yellow-100 text-yellow-800 border border-yellow-400 bg-[repeating-linear-gradient(135deg,#fef9c3_0_8px,#fde047_8px_16px)]'
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
-                              {invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)}
+                              {invoice.paymentStatus === 'pending' && (
+                                <Flag className="w-3 h-3 mr-1 text-yellow-700" />
+                              )}
+                              {invoice.paymentStatus
+                                ? invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)
+                                : 'N/A'}
+                              <span className="ml-2 font-semibold text-xs text-gray-700">
+                                {new Intl.NumberFormat('en-IN', {
+                                  style: 'currency',
+                                  currency: 'INR',
+                                }).format(Number(invoice.total) || 0)}
+                              </span>
                             </span>
                           </td>
-                          <td className="capitalize">{invoice.paymentMethod || 'Cash'}</td>
+                          <td className="capitalize">
+                            {{
+                              cash: 'Cash',
+                              upi: 'UPI',
+                              card: 'Card'
+                            }[invoice.paymentMethod] || 'N/A'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1096,12 +1119,15 @@ const Dashboard = () => {
                             {totalPages > 1 ? 'Total (This Page)' : 'Total'}
                           </td>
                           <td className="font-bold">
-                            {new Intl.NumberFormat('en-IN', {
-                              style: 'currency',
-                              currency: 'INR',
-                            }).format(
-                              paginatedTransactions.reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0)
-                            )}
+                            <span className="text-green-700 font-medium">
+                              Received (Paid): {new Intl.NumberFormat('en-IN', {
+                                style: 'currency',
+                                currency: 'INR',
+                              }).format(paidTotal)}
+                            </span>
+                            <span className="ml-2 text-yellow-700 font-medium">
+                              + {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(pendingTotal)} Pending
+                            </span>
                           </td>
                           <td colSpan={2}></td>
                         </tr>
@@ -1109,12 +1135,15 @@ const Dashboard = () => {
                           <tr>
                             <td colSpan={5} className="text-right font-semibold">Total (All Filtered)</td>
                             <td className="font-bold">
-                              {new Intl.NumberFormat('en-IN', {
-                                style: 'currency',
-                                currency: 'INR',
-                              }).format(
-                                filteredDisplayInvoices.reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0)
-                              )}
+                              <span className="text-green-700 font-medium">
+                                Received (Paid): {new Intl.NumberFormat('en-IN', {
+                                  style: 'currency',
+                                  currency: 'INR',
+                                }).format(paidTotalAll)}
+                              </span>
+                              <span className="ml-2 text-yellow-700 font-medium">
+                                + {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(pendingTotalAll)} Pending
+                              </span>
                             </td>
                             <td colSpan={2}></td>
                           </tr>

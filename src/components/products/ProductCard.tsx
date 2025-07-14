@@ -29,6 +29,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
     maximumFractionDigits: 0,
   }).format(product.price);
 
+  // For weight/volume products, check stockByWeight or consider infinite stock
+  const isWeightVolume = product.unitType === 'weight' || product.unitType === 'volume';
+  const hasStock = isWeightVolume ? 
+    (product.stockByWeight ? product.stockByWeight > 0 : true) : // Infinite stock if no stockByWeight
+    (product.stock > 0);
+  
   const hasLowStock = product.minStock !== undefined && product.stock <= product.minStock;
 
   return (
@@ -65,7 +71,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
             Low Stock
           </div>
         )}
-        {product.stock === 0 && (
+        {!hasStock && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white font-semibold text-xs">
             Out of Stock
           </div>
@@ -82,7 +88,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
           <div className="text-xs text-muted-foreground">GST: {product.tax}%</div>
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Stock: {product.stock} {product.minStock && `(Min: ${product.minStock})`}
+          {isWeightVolume ? (
+            product.stockByWeight ? 
+              `Stock: ${product.stockByWeight} ${product.unitLabel}` :
+              `Stock: Infinite (Bulk Item)`
+          ) : (
+            `Stock: ${product.stock} ${product.minStock && `(Min: ${product.minStock})`}`
+          )}
         </div>
       </CardContent>
       {showAddToCart && (
@@ -92,7 +104,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, showAddToCart
             variant="default" 
             size="sm"
             onClick={handleAddToCart}
-            disabled={product.stock === 0}
+            disabled={!hasStock}
           >
             <PlusCircle className="mr-2 h-4 w-4" /> Add to Cart
           </Button>

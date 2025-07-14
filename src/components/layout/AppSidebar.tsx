@@ -12,10 +12,13 @@ import {
   Clock,
   Tag,
   Layers,
-  Goal
+  Goal,
+  Store,
+  Scale
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePrefetch } from '@/hooks/usePrefetch';
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -23,13 +26,25 @@ interface SidebarItemProps {
   label: string;
   active?: boolean;
   onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
-const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, href, label, active, onClick }) => {
+const SidebarItem: React.FC<SidebarItemProps> = ({ 
+  icon: Icon, 
+  href, 
+  label, 
+  active, 
+  onClick,
+  onMouseEnter,
+  onMouseLeave
+}) => {
   return (
     <Link
       to={href}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={cn(
         'flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors mb-1',
         active
@@ -46,6 +61,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, href, label, acti
 export const AppSidebar = () => {
   const location = useLocation();
   const { user, profile, signOut } = useAuth();
+  const { prefetchData, cancelPrefetch } = usePrefetch();
   const isActive = (path: string) => location.pathname === path;
   const role = profile?.role;
 
@@ -58,16 +74,58 @@ export const AppSidebar = () => {
       <div className="flex-1 overflow-y-auto px-3 py-4 min-h-0">
         <nav className="space-y-1">
           {/* All users have access to POS, Products, and Customers */}
-          <SidebarItem icon={ShoppingCart} href="/pos" label="Point of Sale" active={isActive('/pos')} />
-          <SidebarItem icon={Package} href="/products" label="Products" active={isActive('/products')} />
-          <SidebarItem icon={Users} href="/customers" label="Customers" active={isActive('/customers')} />
+          <SidebarItem 
+            icon={ShoppingCart} 
+            href="/pos" 
+            label="Point of Sale" 
+            active={isActive('/pos')}
+            onMouseEnter={() => prefetchData('/pos')}
+            onMouseLeave={() => cancelPrefetch('/pos')}
+          />
+          <SidebarItem 
+            icon={Package} 
+            href="/products" 
+            label="Products" 
+            active={isActive('/products')}
+            onMouseEnter={() => prefetchData('/products')}
+            onMouseLeave={() => cancelPrefetch('/products')}
+          />
+          <SidebarItem 
+            icon={Users} 
+            href="/customers" 
+            label="Customers" 
+            active={isActive('/customers')}
+            onMouseEnter={() => prefetchData('/customers')}
+            onMouseLeave={() => cancelPrefetch('/customers')}
+          />
 
           {/* Manager and admin users have access to Dashboard, Invoices, and Transactions */}
           {(role === 'manager' || role === 'admin') && (
             <>
-              <SidebarItem icon={BarChart4} href="/dashboard" label="Dashboard" active={isActive('/dashboard')} />
-              <SidebarItem icon={FileText} href="/invoices" label="Invoices" active={isActive('/invoices')} />
-              <SidebarItem icon={Clock} href="/transactions" label="Transactions" active={isActive('/transactions')} />
+              <SidebarItem 
+                icon={BarChart4} 
+                href="/dashboard" 
+                label="Dashboard" 
+                active={isActive('/dashboard')}
+                onMouseEnter={() => prefetchData('/dashboard')}
+                onMouseLeave={() => cancelPrefetch('/dashboard')}
+              />
+              <SidebarItem 
+                icon={FileText} 
+                href="/invoices" 
+                label="Invoices" 
+                active={isActive('/invoices')}
+                onMouseEnter={() => prefetchData('/invoices')}
+                onMouseLeave={() => cancelPrefetch('/invoices')}
+              />
+              <SidebarItem 
+                icon={Clock} 
+                href="/transactions" 
+                label="Transactions" 
+                active={isActive('/transactions')}
+                onMouseEnter={() => prefetchData('/transactions')}
+                onMouseLeave={() => cancelPrefetch('/transactions')}
+              />
             </>
           )}
 
@@ -79,8 +137,22 @@ export const AppSidebar = () => {
                   Admin
                 </div>
               </div>
-              <SidebarItem icon={Settings} href="/settings" label="Settings" active={isActive('/settings')} />
-              <SidebarItem icon={Layers} href="/admin" label="Admin Panel" active={isActive('/admin')} />
+              <SidebarItem 
+                icon={Settings} 
+                href="/settings" 
+                label="Settings" 
+                active={isActive('/settings')}
+                onMouseEnter={() => prefetchData('/settings')}
+                onMouseLeave={() => cancelPrefetch('/settings')}
+              />
+              <SidebarItem 
+                icon={Layers} 
+                href="/admin" 
+                label="Admin Panel" 
+                active={isActive('/admin')}
+                onMouseEnter={() => prefetchData('/admin')}
+                onMouseLeave={() => cancelPrefetch('/admin')}
+              />
             </>
           )}
         </nav>

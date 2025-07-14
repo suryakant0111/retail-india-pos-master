@@ -30,7 +30,7 @@ interface ReceiptDialogProps {
   paymentMethod: 'cash' | 'upi' | 'card';
   reference: string;
   onPrintReceipt: () => void;
-  onFinalize: () => void;
+  onFinalize: (status: string) => void;
   isPrintingReceipt: boolean;
 }
 
@@ -414,7 +414,13 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
                 </>
               )}
             </Button>
-            <Button onClick={onFinalize}>
+            <Button 
+              variant="destructive" 
+              onClick={() => onFinalize('pending')}
+            >
+              Mark as Pending
+            </Button>
+            <Button onClick={() => onFinalize('paid')}>
               Done
             </Button>
           </div>

@@ -52,7 +52,7 @@ const Inventory = () => {
   }, [profile?.shop_id]);
   
   // Get unique categories
-  const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
+  const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(cat => cat && cat.trim() !== '')))];
   
   // Filter products based on search term and low stock filter
   const filteredProducts = products

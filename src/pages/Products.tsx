@@ -74,6 +74,25 @@ const Products = () => {
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const productRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // Helper function to get unit labels based on unit type
+  const getUnitLabels = (unitType: string) => {
+    if (!unitType || unitType.trim() === '') {
+      return ['pcs', 'units']; // Default fallback
+    }
+    
+    switch (unitType) {
+      case 'weight':
+        return ['kg', 'g'];
+      case 'volume':
+        return ['L', 'ml'];
+      case 'length':
+        return ['m', 'cm'];
+      case 'unit':
+      default:
+        return ['pcs', 'units'];
+    }
+  };
   
   // Form setup
   const productForm = useForm({
@@ -87,7 +106,13 @@ const Products = () => {
       tax: '',
       minStock: '',
       costPrice: '',
-      hsn: ''
+      hsn: '',
+      unitType: 'unit',
+      unitLabel: 'pcs',
+      pricePerUnit: '',
+      stockByWeight: '',
+      tareWeight: '',
+      isActive: true
     }
   });
 
@@ -104,7 +129,13 @@ const Products = () => {
         tax: editProduct.tax?.toString() || '',
         minStock: editProduct.minStock?.toString() || '',
         costPrice: editProduct.costPrice?.toString() || '',
-        hsn: editProduct.hsn || ''
+        hsn: editProduct.hsn || '',
+        unitType: editProduct.unitType || 'unit',
+        unitLabel: editProduct.unitLabel || 'pcs',
+        pricePerUnit: editProduct.pricePerUnit?.toString() || '',
+        stockByWeight: editProduct.stockByWeight?.toString() || '',
+        tareWeight: editProduct.tareWeight?.toString() || '',
+        isActive: editProduct.isActive !== false
       });
     }
   }, [editProduct, productForm]);
@@ -126,7 +157,7 @@ const Products = () => {
   }, [location.search, products]);
   
   // Get unique categories
-  const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
+  const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(cat => cat && cat.trim() !== '')))];
   
   // Filter products
   const filteredProducts = products.filter(product => {
@@ -137,10 +168,16 @@ const Products = () => {
     
     const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
     
+    // For weight/volume products, check stockByWeight or consider infinite stock
+    const isWeightVolume = product.unitType === 'weight' || product.unitType === 'volume';
+    const hasStock = isWeightVolume ? 
+      (product.stockByWeight ? product.stockByWeight > 0 : true) : // Infinite stock if no stockByWeight
+      (product.stock > 0);
+    
     const matchesStock = stockFilter === 'all' || 
-                        (stockFilter === 'in-stock' && product.stock > 0) ||
+                        (stockFilter === 'in-stock' && hasStock) ||
                         (stockFilter === 'low-stock' && product.minStock && product.stock <= product.minStock) ||
-                        (stockFilter === 'out-of-stock' && product.stock === 0);
+                        (stockFilter === 'out-of-stock' && !hasStock);
     
     const matchesDate = !dateFilter; // Date filtering disabled since createdAt column doesn't exist
     
@@ -212,20 +249,29 @@ const Products = () => {
   // Form submission handlers
   const handleAddProduct = async (data: any) => {
     try {
+      // For weight/volume products, use stockByWeight instead of stock
+      const isWeightVolume = data.unitType === 'weight' || data.unitType === 'volume';
+      const stockValue = isWeightVolume ? 
+        (data.stockByWeight ? parseFloat(data.stockByWeight) : 0) : // Use 0 instead of undefined
+        (parseInt(data.stock) || 0);
+      
       await addProduct({
-      name: data.name,
+        name: data.name,
         description: data.description,
-      category: data.category,
-      price: parseFloat(data.price),
-      stock: parseInt(data.stock),
-      tax: parseFloat(data.tax) || 0,
+        category: data.category,
+        price: parseFloat(data.price),
+        stock: stockValue,
+        tax: parseFloat(data.tax) || 0,
         image_url: productImage,
         barcode: data.barcode,
         minStock: data.minStock ? parseInt(data.minStock) : undefined,
         costPrice: data.costPrice ? parseFloat(data.costPrice) : undefined,
         hsn: data.hsn,
-      unitType: 'unit',
-        unitLabel: 'pcs'
+        unitType: data.unitType || 'unit',
+        unitLabel: data.unitLabel || 'pcs',
+        pricePerUnit: data.pricePerUnit ? parseFloat(data.pricePerUnit) : undefined,
+        stockByWeight: data.stockByWeight ? parseFloat(data.stockByWeight) : undefined,
+        tareWeight: data.tareWeight ? parseFloat(data.tareWeight) : 0
       });
       
       setShowAddProductDialog(false);
@@ -241,17 +287,28 @@ const Products = () => {
     if (!editProduct) return;
     
     try {
+      // For weight/volume products, use stockByWeight instead of stock
+      const isWeightVolume = data.unitType === 'weight' || data.unitType === 'volume';
+      const stockValue = isWeightVolume ? 
+        (data.stockByWeight ? parseFloat(data.stockByWeight) : 0) : // Use 0 instead of undefined
+        (parseInt(data.stock) || 0);
+      
       await updateProduct(editProduct.id, {
         name: data.name,
         description: data.description,
         category: data.category,
         price: parseFloat(data.price),
-        stock: parseInt(data.stock),
+        stock: stockValue,
         barcode: data.barcode,
         tax: parseFloat(data.tax),
         minStock: data.minStock ? parseInt(data.minStock) : undefined,
         costPrice: data.costPrice ? parseFloat(data.costPrice) : undefined,
-        hsn: data.hsn
+        hsn: data.hsn,
+        unitType: data.unitType || 'unit',
+        unitLabel: data.unitLabel || 'pcs',
+        pricePerUnit: data.pricePerUnit ? parseFloat(data.pricePerUnit) : undefined,
+        stockByWeight: data.stockByWeight ? parseFloat(data.stockByWeight) : undefined,
+        tareWeight: data.tareWeight ? parseFloat(data.tareWeight) : 0
       });
       
       setEditProduct(null);
@@ -909,6 +966,58 @@ const Products = () => {
                   </FormItem>
                 )}
               />
+              
+              {/* Unit Type and Label Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={productForm.control}
+                  name="unitType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Unit Type</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select unit type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unit">Pieces (pcs)</SelectItem>
+                            <SelectItem value="weight">Weight (kg/g)</SelectItem>
+                            <SelectItem value="volume">Volume (L/ml)</SelectItem>
+                            <SelectItem value="length">Length (m/cm)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={productForm.control}
+                  name="unitLabel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Unit Label</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select unit label" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getUnitLabels(productForm.watch('unitType')).map(label => (
+                              <SelectItem key={label} value={label}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
                 </TabsContent>
                 
                 <TabsContent value="pricing" className="space-y-4">
@@ -954,19 +1063,22 @@ const Products = () => {
                     )}
                   />
                   
-                  <FormField
-                    control={productForm.control}
-                    name="stock"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Initial Stock *</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Enter stock quantity" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* Initial Stock - Only show for regular products (not weight/volume) */}
+                  {(productForm.watch('unitType') === 'unit' || productForm.watch('unitType') === 'length' || !productForm.watch('unitType')) && (
+                    <FormField
+                      control={productForm.control}
+                      name="stock"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Initial Stock *</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="Enter stock quantity" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </TabsContent>
                 
                 <TabsContent value="advanced" className="space-y-4">
@@ -992,11 +1104,119 @@ const Products = () => {
                         <FormLabel>HSN Code</FormLabel>
                         <FormControl>
                           <Input placeholder="Enter HSN code" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+
+
+                  {/* Weight/Volume Specific Fields - Only show for weight/volume products */}
+                  {(productForm.watch('unitType') === 'weight' || productForm.watch('unitType') === 'volume') && (
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="text-sm font-medium text-blue-800">
+                        Weight/Volume Settings
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={productForm.control}
+                          name="pricePerUnit"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Price Per Unit (₹)</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="number" 
+                                  step="0.01" 
+                                  placeholder={`Price per ${productForm.watch('unitLabel') || 'unit'}`}
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={productForm.control}
+                          name="stockByWeight"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Stock by Weight/Volume (Optional)</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="number" 
+                                  step="0.001" 
+                                  placeholder={`Leave empty for infinite stock`}
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <div className="text-xs text-muted-foreground">
+                                Leave empty for bulk items (sugar, oil, etc.) or enter specific weight/volume
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      
+                                              {/* Stock Management Toggle */}
+                        <div className="flex items-center space-x-2">
+                          <Checkbox 
+                            id="infiniteStock"
+                            checked={!productForm.watch('stockByWeight')}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                productForm.setValue('stockByWeight', '');
+                              }
+                            }}
+                          />
+                          <label htmlFor="infiniteStock" className="text-sm font-medium">
+                            Infinite Stock (Bulk Items)
+                          </label>
+                        </div>
+                        
+                        {/* Out of Stock Toggle */}
+                        <div className="flex items-center space-x-2">
+                          <Checkbox 
+                            id="outOfStock"
+                            checked={productForm.watch('isActive') === false}
+                            onCheckedChange={(checked) => {
+                              productForm.setValue('isActive', !checked);
+                            }}
+                          />
+                          <label htmlFor="outOfStock" className="text-sm font-medium text-red-600">
+                            Out of Stock (Manual Toggle)
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Tare Weight - Only show for weight/volume products */}
+                  {(productForm.watch('unitType') === 'weight' || productForm.watch('unitType') === 'volume') && (
+                    <FormField
+                      control={productForm.control}
+                      name="tareWeight"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tare Weight (for containers)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.001" 
+                              placeholder="Container weight (default 0)" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <div className="text-xs text-muted-foreground">
+                            Weight of empty container. Will be subtracted from total weight during sales.
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
               
               <FormItem>
                 <FormLabel>Product Image</FormLabel>

@@ -73,8 +73,8 @@ const Invoices = () => {
   // Filter invoices based on search term and status
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = 
-      invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (invoice.customer && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (invoice.customer && invoice.customer.name && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === 'all' || invoice.paymentStatus === statusFilter;
     

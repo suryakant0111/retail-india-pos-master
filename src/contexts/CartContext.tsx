@@ -2,6 +2,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { CartItem, Product, ProductVariant, Customer } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
+import { convertUnit, getAvailableUnits } from '@/lib/utils';
 
 interface CartContextType {
   items: CartItem[];
@@ -13,6 +14,7 @@ interface CartContextType {
   addItem: (product: Product, quantity: number, variant?: ProductVariant) => void;
   removeItem: (index: number) => void;
   updateQuantity: (index: number, quantity: number) => void;
+  updateQuantityWithUnit: (index: number, quantity: number, unitLabel: string) => void;
   updatePrice: (index: number, price: number) => void;
   clearCart: () => void;
   setCustomer: (customer: Customer | null) => void;
@@ -32,6 +34,7 @@ const CartContext = createContext<CartContextType>({
   addItem: () => {},
   removeItem: () => {},
   updateQuantity: () => {},
+  updateQuantityWithUnit: () => {},
   updatePrice: () => {},
   clearCart: () => {},
   setCustomer: () => {},
@@ -68,10 +71,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[CartContext] addItem called with:', { product, quantity, variant });
     console.log('[CartContext] Current items before adding:', items);
     
-    const price = variant ? variant.price : product.price;
+    // Calculate price based on product type
+    let price = variant ? variant.price : product.price;
+    
+    // For weight/volume products, use price per unit if available
+    if ((product.unitType === 'weight' || product.unitType === 'volume') && product.pricePerUnit) {
+      price = product.pricePerUnit;
+      console.log('[CartContext] Using price per unit:', price, 'for', product.unitLabel);
+    }
+    
     console.log('[CartContext] Calculated price:', price);
     
-    // No per-product tax
     // Check if this product/variant is already in cart
     const existingItemIndex = items.findIndex(item => {
       if (variant) {
@@ -108,15 +118,29 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Pass through unitLabel and unitType for manual/custom items
         unitLabel: product.unitLabel,
         unitType: product.unitType,
+        // Initialize converted values for weight/volume products
+        originalQuantity: quantity,
+        originalUnitLabel: product.unitLabel,
+        convertedQuantity: quantity,
+        convertedUnitLabel: product.unitLabel,
       };
       console.log('[CartContext] New item to add:', newItem);
       setItems([...items, newItem]);
       console.log('[CartContext] Items after adding new item:', [...items, newItem]);
     }
     
+    // Create descriptive message based on product type
+    let description = `${quantity} x ${product.name}`;
+    if (variant) {
+      description += ` (${variant.name})`;
+    }
+    if (product.unitType === 'weight' || product.unitType === 'volume') {
+      description += ` (${product.unitLabel})`;
+    }
+    
     toast({
       title: "Item added",
-      description: `${quantity} x ${product.name}${variant ? ` (${variant.name})` : ''} added to cart`,
+      description: description + " added to cart",
     });
   };
   
@@ -133,17 +157,81 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const updatedItems = [...items];
     const item = updatedItems[index];
-    const newTaxAmount = item.price * (taxRate / 100) * quantity;
+    
+    // Calculate total price based on product type
+    let totalPrice = item.price * quantity;
+    
+    // For weight/volume products, ensure proper calculation
+    if (item.unitType === 'weight' || item.unitType === 'volume') {
+      totalPrice = item.price * quantity;
+      console.log('[CartContext] Weight/volume item total:', totalPrice, 'for', quantity, item.unitLabel);
+    }
+    
+    const newTaxAmount = totalPrice * (taxRate / 100);
     
     updatedItems[index] = {
       ...item,
       quantity,
       taxAmount: newTaxAmount,
-      totalPrice: (item.price * quantity) + newTaxAmount
+      totalPrice: totalPrice
     };
     
     setItems(updatedItems);
     console.log('Cart items after update:', updatedItems);
+  };
+
+  const updateQuantityWithUnit = (index: number, quantity: number, unitLabel: string) => {
+    console.log('updateQuantityWithUnit called with:', index, quantity, unitLabel);
+    if (quantity <= 0) {
+      removeItem(index);
+      return;
+    }
+    
+    const updatedItems = [...items];
+    const item = updatedItems[index];
+    
+    // For weight/volume products, convert units
+    if (item.unitType === 'weight' || item.unitType === 'volume') {
+      const originalUnitLabel = item.originalUnitLabel || item.unitLabel || 'kg';
+      
+      // Convert from the new unit to the original unit for price calculation
+      const convertedQuantity = convertUnit(quantity, unitLabel, originalUnitLabel);
+      
+      // Calculate total price based on original unit
+      const totalPrice = item.price * convertedQuantity;
+      const newTaxAmount = totalPrice * (taxRate / 100);
+      
+      updatedItems[index] = {
+        ...item,
+        quantity: convertedQuantity, // Store in original unit for calculations
+        convertedQuantity: quantity, // Store customer's preferred quantity for display
+        convertedUnitLabel: unitLabel, // Store customer's preferred unit for display
+        originalQuantity: item.originalQuantity || item.quantity,
+        originalUnitLabel: originalUnitLabel,
+        taxAmount: newTaxAmount,
+        totalPrice: totalPrice
+      };
+      
+      console.log('[CartContext] Unit conversion:', {
+        customerInput: `${quantity} ${unitLabel}`,
+        systemCalculation: `${convertedQuantity} ${originalUnitLabel}`,
+        totalPrice: totalPrice
+      });
+    } else {
+      // For regular products, just update quantity
+      const totalPrice = item.price * quantity;
+      const newTaxAmount = totalPrice * (taxRate / 100);
+      
+      updatedItems[index] = {
+        ...item,
+        quantity,
+        taxAmount: newTaxAmount,
+        totalPrice: totalPrice
+      };
+    }
+    
+    setItems(updatedItems);
+    console.log('Cart items after unit update:', updatedItems);
   };
 
   const updatePrice = (index: number, price: number) => {
@@ -191,6 +279,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addItem,
         removeItem,
         updateQuantity,
+        updateQuantityWithUnit,
         updatePrice,
         clearCart,
         setCustomer,

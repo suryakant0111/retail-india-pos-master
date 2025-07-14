@@ -6,6 +6,7 @@ import { UpiQRCode } from '@/components/pos/UpiQRCode';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PaymentSettings {
   upiId: string;
@@ -21,7 +22,7 @@ interface PaymentDialogProps {
   paymentMethod: 'cash' | 'upi' | 'card';
   total: number;
   paymentSuccess: boolean;
-  onPaymentConfirmed: () => void;
+  onPaymentConfirmed: (status: 'paid' | 'pending') => void;
   generateReference: () => string;
 }
 
@@ -37,6 +38,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [upiId, setUpiId] = useState('7259538046@ybl');
   const [reference, setReference] = useState('');
   const { profile } = useProfile();
+  // Remove paymentStatus state and dropdown
   
   // Generate a reference only when the dialog first opens, not on every render
   useEffect(() => {
@@ -79,10 +81,10 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [profile?.shop_id]);
   
   // Safe handler for payment confirmation
-  const handlePaymentConfirmed = () => {
+  const handlePaymentConfirmed = (status: 'paid' | 'pending') => {
     if (typeof onPaymentConfirmed === 'function') {
       try {
-        onPaymentConfirmed();
+        onPaymentConfirmed(status);
       } catch (error) {
         console.error('Error confirming payment:', error);
       }
@@ -114,6 +116,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
         
+        {/* Payment Status Selector */}
+        {/* Removed payment status dropdown */}
+        
         {paymentSuccess && (
           <Alert variant="success" className="mb-4">
             <AlertTitle>Payment Successful</AlertTitle>
@@ -128,7 +133,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
             amount={total} 
             reference={currentReference} 
             upiId={upiId}
-            onPaymentConfirmed={handlePaymentConfirmed} 
+            onPaymentConfirmed={() => handlePaymentConfirmed('paid')} 
           />
         ) : (
           <Card>
@@ -150,13 +155,16 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                   'Process card payment via machine'}
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex justify-between gap-2">
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <div className="flex gap-2">
-                <Button onClick={handlePaymentConfirmed}>
+                <Button onClick={() => handlePaymentConfirmed('paid')}>
                   Mark as Paid
+                </Button>
+                <Button variant="outline" className="border-yellow-400 text-yellow-700 hover:bg-yellow-50" onClick={() => handlePaymentConfirmed('pending')}>
+                  Mark as Pending
                 </Button>
               </div>
             </CardFooter>

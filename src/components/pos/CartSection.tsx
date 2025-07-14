@@ -43,6 +43,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
     clearCart,
     removeItem,
     updateQuantity,
+    updateQuantityWithUnit,
     updatePrice,
     addItem
   } = useCart();
@@ -282,6 +283,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
                 index={index}
                 onRemove={() => removeItem(index)}
                 onUpdateQuantity={qty => updateQuantity(index, qty)}
+                onUpdateQuantityWithUnit={(qty, unitLabel) => updateQuantityWithUnit(index, qty, unitLabel)}
                 onUpdatePrice={price => updatePrice(index, price)}
                 posMode={posMode}
                 unitLabel={item.unitLabel || item.product?.unitLabel}

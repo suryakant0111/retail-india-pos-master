@@ -8,6 +8,9 @@ export interface Customer {
   gstin?: string; // Added gstin for GST Identification Number
   loyaltyPoints?: number;
   totalPurchases?: number;
+  creditLimit?: number; // Kirana: Credit limit for customer
+  outstandingBalance?: number; // Kirana: Current outstanding amount
+  creditEnabled?: boolean; // Kirana: Whether credit sales are enabled for this customer
   createdAt: Date;
   updatedAt: Date;
   shop_id?: string;
@@ -27,11 +30,16 @@ export interface CartItem {
   quantity: number;
   price: number;
   name?: string; // For custom/manual items
-  unitType?: 'unit' | 'weight' | 'volume';
+  unitType?: 'unit' | 'weight' | 'volume' | 'length';
   unitLabel?: string;
   variant?: ProductVariant; // Add variant property
   taxAmount?: number; // Add taxAmount property
   totalPrice?: number; // Add totalPrice property
+  // Unit conversion fields
+  originalQuantity?: number; // Original quantity in product's unit
+  originalUnitLabel?: string; // Original unit label from product
+  convertedQuantity?: number; // Quantity in customer's preferred unit
+  convertedUnitLabel?: string; // Customer's preferred unit
 }
 
 export interface Product {
@@ -41,6 +49,8 @@ export interface Product {
   category: string;
   price: number;
   costPrice?: number; // Add costPrice property
+  pricePerUnit?: number; // Kirana: Price per unit (for weight products)
+  unitPrice?: number; // Kirana: Unit price
   tax: number;
   taxRate?: number; 
   hsn?: string;     
@@ -54,8 +64,10 @@ export interface Product {
   createdAt: Date;
   updatedAt: Date;
   shop_id?: string;
-  unitType?: 'unit' | 'weight' | 'volume'; // 'unit' (pcs), 'weight' (kg/g), 'volume' (L/ml)
+  unitType?: 'unit' | 'weight' | 'volume' | 'length'; // 'unit' (pcs), 'weight' (kg/g), 'volume' (L/ml), 'length' (m/cm)
   unitLabel?: string; // e.g., 'kg', 'g', 'L', 'ml', 'pcs'
+  stockByWeight?: number; // Stock quantity in weight/volume units
+  tareWeight?: number; // Tare weight for containers (default 0)
 }
 
 export interface User {
@@ -90,4 +102,50 @@ export interface SalesSummary {
   weeklySales: number;
   monthlySales: number;
   topProducts: { name: string; sales: number }[];
+}
+
+// Kirana-specific interfaces
+export interface CustomerLedger {
+  id: string;
+  customerId: string;
+  shopId: string;
+  transactionType: 'credit' | 'payment' | 'adjustment';
+  amount: number;
+  description?: string;
+  invoiceId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WeightProduct {
+  id: string;
+  shopId: string;
+  productId: string;
+  pricePerKg: number;
+  pricePerGram?: number;
+  currentWeight: number;
+  unitType: 'kg' | 'g' | 'L' | 'ml';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ShopSettings {
+  id: string;
+  shopId: string;
+  posMode: 'retail' | 'kirana';
+  weightUnits: string[];
+  defaultTaxRate: number;
+  enableCreditSales: boolean;
+  enableWeightProducts: boolean;
+  enableGstTracking: boolean;
+  paymentSettings: Record<string, any>;
+  businessSettings: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface KiranaCartItem extends CartItem {
+  weight?: number; // For weight-based products
+  weightUnit?: string; // kg, g, L, ml
+  pricePerUnit?: number; // Price per kg/g/L/ml
 }

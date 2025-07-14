@@ -5,16 +5,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Trash2, Plus, Minus } from 'lucide-react';
 import { useState } from 'react';
+import { UnitSelector } from './UnitSelector';
+import { convertUnit } from '@/lib/utils';
 
 interface CartItemCardProps {
   item: CartItem;
   index: number;
   onRemove: () => void;
   onUpdateQuantity: (qty: number) => void;
+  onUpdateQuantityWithUnit: (qty: number, unitLabel: string) => void;
   onUpdatePrice: (price: number) => void;
   posMode?: 'retail' | 'kirana';
   unitLabel?: string;
-  unitType?: 'unit' | 'weight' | 'volume';
+  unitType?: 'unit' | 'weight' | 'volume' | 'length';
 }
 
 export const CartItemCard: React.FC<CartItemCardProps> = ({ 
@@ -22,24 +25,29 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
   index, 
   onRemove, 
   onUpdateQuantity, 
+  onUpdateQuantityWithUnit,
   onUpdatePrice,
   posMode = 'retail',
   unitLabel,
   unitType
 }) => {
-  const [inputValue, setInputValue] = useState(item.quantity.toString());
+  const [inputValue, setInputValue] = useState(
+    item.convertedQuantity ? item.convertedQuantity.toString() : item.quantity.toString()
+  );
   const [inputError, setInputError] = useState('');
   const [priceInput, setPriceInput] = useState(item.price.toString());
   const originalPrice = item.product?.price;
 
   // Determine display name and unit label
   const displayName = item.product ? item.product.name : item.name || 'Custom Item';
-  const displayUnitLabel = item.unitLabel || unitLabel || item.product?.unitLabel || (posMode === 'kirana' ? 'kg' : 'pcs');
+  const displayUnitLabel = item.convertedUnitLabel || item.unitLabel || unitLabel || item.product?.unitLabel || (posMode === 'kirana' ? 'kg' : 'pcs');
 
-  // Sync inputValue with item.quantity if it changes externally
+  // Sync inputValue with converted quantity if available, otherwise use original quantity
   React.useEffect(() => {
-    setInputValue(item.quantity.toString());
-  }, [item.quantity]);
+    setInputValue(
+      item.convertedQuantity ? item.convertedQuantity.toString() : item.quantity.toString()
+    );
+  }, [item.convertedQuantity, item.quantity]);
 
   React.useEffect(() => {
     setPriceInput(item.price.toString());
@@ -131,43 +139,61 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
             <Trash2 className="h-4 w-4" />
           </Button>
           
-          <div className="flex items-center">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onUpdateQuantity(item.quantity - (posMode === 'kirana' ? 0.1 : 1))}
-              disabled={item.quantity <= (posMode === 'kirana' ? 0.1 : 1)}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <div className="flex flex-col items-center mx-2">
-              <input
-                type="text"
-                min={posMode === 'kirana' ? 0.01 : 1}
-                step={posMode === 'kirana' ? 0.01 : 1}
-                max={item.product?.stock}
-                value={inputValue}
-                onChange={handleInputChange}
-                onBlur={handleInputBlurOrEnter}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleInputBlurOrEnter();
-                }}
-                className={`w-16 text-center border rounded ${inputError ? 'border-red-500' : ''}`}
-                style={{ width: 64 }}
-                disabled={item.product?.stock === 0}
-              />
-              <span className="text-xs text-muted-foreground">{displayUnitLabel}</span>
-              {inputError && <span className="text-xs text-red-500">{inputError}</span>}
+                      <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => onUpdateQuantity(item.quantity - (posMode === 'kirana' ? 0.1 : 1))}
+                disabled={item.quantity <= (posMode === 'kirana' ? 0.1 : 1)}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <div className="flex flex-col items-center mx-2">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    min={posMode === 'kirana' ? 0.01 : 1}
+                    step={posMode === 'kirana' ? 0.01 : 1}
+                    max={item.product?.stock}
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onBlur={handleInputBlurOrEnter}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleInputBlurOrEnter();
+                    }}
+                    className={`w-16 text-center border rounded ${inputError ? 'border-red-500' : ''}`}
+                    style={{ width: 64 }}
+                    disabled={item.product?.stock === 0}
+                  />
+                  {/* Unit selector for weight/volume products */}
+                  {(item.unitType === 'weight' || item.unitType === 'volume') && (
+                    <UnitSelector
+                      value={item.convertedUnitLabel || item.unitLabel || 'kg'}
+                      onChange={(newUnit) => {
+                        const currentQty = parseFloat(inputValue) || 0;
+                        const currentUnit = item.convertedUnitLabel || item.unitLabel || 'kg';
+                        
+                        // Convert current display quantity to new unit
+                        const convertedQty = convertUnit(currentQty, currentUnit, newUnit);
+                        
+                        onUpdateQuantityWithUnit(convertedQty, newUnit);
+                      }}
+                      unitType={item.unitType}
+                      className="w-12"
+                    />
+                  )}
+                </div>
+                {inputError && <span className="text-xs text-red-500">{inputError}</span>}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => onUpdateQuantity(item.quantity + (posMode === 'kirana' ? 0.1 : 1))}
+                disabled={item.product?.stock && item.quantity >= item.product.stock}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onUpdateQuantity(item.quantity + (posMode === 'kirana' ? 0.1 : 1))}
-              disabled={item.product?.stock && item.quantity >= item.product.stock}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       </CardContent>
     </Card>

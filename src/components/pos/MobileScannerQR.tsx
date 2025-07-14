@@ -207,22 +207,21 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
             {isScannerActive ? 'Scanner Active' : 'Mobile Scanner'}
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-full max-w-xs sm:max-w-sm p-3 overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-base">
               <Smartphone className="h-5 w-5" />
               Mobile Barcode Scanner
             </DialogTitle>
           </DialogHeader>
-          
-          <div className="space-y-4">
+          <div className="space-y-3">
             {/* Scanner Status */}
             {isScannerActive && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-sm font-medium text-green-800">
+                    <span className="text-xs font-medium text-green-800">
                       Scanner Active
                     </span>
                   </div>
@@ -230,39 +229,37 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                     onClick={stopScanner}
                     size="sm"
                     variant="destructive"
-                    className="text-xs"
+                    className="text-xs px-2 py-1"
                   >
                     <X className="h-3 w-3 mr-1" />
                     Stop
                   </Button>
                 </div>
-                <div className="text-xs text-green-600">
+                <div className="text-xs text-green-600 truncate">
                   Session: {sessionId.substring(0, 8)}...
                 </div>
               </div>
             )}
-
             {/* Start Scanner Button */}
             {!isScannerActive && (
               <Button
                 onClick={startScannerSession}
-                size="lg"
+                size="sm"
                 className="w-full flex items-center gap-2"
               >
                 <Smartphone className="h-4 w-4" />
                 Start Mobile Scanner
               </Button>
             )}
-
             {/* QR Code Display */}
             {isScannerActive && qrCodeDataUrl && (
-              <div className="text-center space-y-3">
-                <span className="text-sm font-medium">Scan QR Code with Your Phone</span>
+              <div className="text-center space-y-2">
+                <span className="text-xs font-medium">Scan QR Code with Your Phone</span>
                 <div className="flex justify-center">
                   <img 
                     src={qrCodeDataUrl} 
                     alt="Mobile Scanner QR Code" 
-                    className="border rounded-lg shadow-sm"
+                    className="border rounded-lg shadow-sm max-w-[120px] max-h-[120px]"
                   />
                 </div>
                 <p className="text-xs text-gray-600">
@@ -270,23 +267,22 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 </p>
               </div>
             )}
-
             {/* URL Section */}
             {isScannerActive && mobileUrl && (
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Mobile Scanner URL</span>
+              <div className="space-y-1">
+                <span className="text-xs font-medium">Mobile Scanner URL</span>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={mobileUrl}
                     readOnly
-                    className="flex-1 px-3 py-2 border rounded text-sm bg-gray-50"
+                    className="flex-1 px-2 py-1 border rounded text-xs bg-gray-50"
                   />
                   <Button
                     onClick={copyToClipboard}
                     size="sm"
                     variant="outline"
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 px-2 py-1"
                   >
                     <Copy className="h-4 w-4" />
                     Copy
@@ -295,14 +291,13 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 <Button
                   onClick={openMobileScanner}
                   size="sm"
-                  className="w-full flex items-center gap-2"
+                  className="w-full flex items-center gap-2 px-2 py-1"
                 >
                   <ExternalLink className="h-4 w-4" />
                   Open Mobile Scanner
                 </Button>
               </div>
             )}
-
             {/* Instructions */}
             <div className="text-xs text-gray-500 space-y-1">
               <p><strong>How to use:</strong></p>
@@ -314,32 +309,21 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 <li>Scanned products will appear in cart</li>
               </ol>
             </div>
-
             {/* Manual Entry */}
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Manual Entry (Testing)</span>
+            <div className="space-y-1">
+              <span className="text-xs font-medium">Manual Entry (Testing)</span>
               <div className="flex gap-2">
                 <input
                   type="text"
                   placeholder="Enter barcode manually"
-                  className="flex-1 px-3 py-2 border rounded text-sm"
+                  className="flex-1 px-2 py-1 border rounded text-xs"
                   onKeyPress={(e) => {
-                    console.log('[MobileScannerQR] Key pressed:', e.key);
                     if (e.key === 'Enter') {
-                      console.log('[MobileScannerQR] Enter pressed, processing barcode');
                       const barcode = (e.target as HTMLInputElement).value;
-                      console.log('[MobileScannerQR] Manual entry barcode:', barcode);
-                      console.log('[MobileScannerQR] Available products:', products);
-                      console.log('[MobileScannerQR] Products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
-                      
                       const product = products.find(p => 
                         p.barcode && p.barcode.toString() === barcode
                       );
-                      
-                      console.log('[MobileScannerQR] Found product:', product);
-                      
                       if (product) {
-                        console.log('[MobileScannerQR] Calling onProductFound with:', product);
                         onProductFound(product);
                         (e.target as HTMLInputElement).value = '';
                         toast({
@@ -359,12 +343,10 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 />
                 <Button 
                   size="sm"
+                  className="px-2 py-1"
                   onClick={(e) => {
-                    console.log('[MobileScannerQR] Test button clicked');
                     const input = e.currentTarget.previousElementSibling as HTMLInputElement;
                     const barcode = input.value.trim();
-                    console.log('[MobileScannerQR] Test button barcode:', barcode);
-                    
                     if (!barcode) {
                       toast({
                         title: "No Barcode",
@@ -373,18 +355,10 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                       });
                       return;
                     }
-                    
-                    console.log('[MobileScannerQR] Available products:', products);
-                    console.log('[MobileScannerQR] Products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
-                    
                     const product = products.find(p => 
                       p.barcode && p.barcode.toString() === barcode
                     );
-                    
-                    console.log('[MobileScannerQR] Found product:', product);
-                    
                     if (product) {
-                      console.log('[MobileScannerQR] Calling onProductFound with:', product);
                       onProductFound(product);
                       input.value = '';
                       toast({
@@ -403,15 +377,6 @@ export const MobileScannerQR: React.FC<MobileScannerQRProps> = ({
                 >
                   Test
                 </Button>
-              </div>
-              <div className="text-xs text-gray-500">
-                <p>Available barcodes for testing:</p>
-                {products.filter(p => p.barcode).slice(0, 3).map(p => (
-                  <div key={p.id}>• {p.name}: {p.barcode}</div>
-                ))}
-                {products.filter(p => p.barcode).length === 0 && (
-                  <div>No products with barcodes found. Add barcodes to your products first.</div>
-                )}
               </div>
             </div>
           </div>
