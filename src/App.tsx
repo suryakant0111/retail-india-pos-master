@@ -25,6 +25,8 @@ import ShopPage from "./pages/Shop";
 import SignupPage from "./pages/Signup";
 import GSTFiling from "./pages/GSTFiling";
 import MobileScanner from "./pages/MobileScanner";
+import Support from "./pages/Support";
+import DevSupport from "./pages/DevSupport";
 
 
 const queryClient = new QueryClient();
@@ -50,6 +52,7 @@ const App = () => (
                   <Route path="/pos" element={<POS />} />
                   <Route path="/products" element={<Products />} />
                   <Route path="/customers" element={<Customers />} />
+                  <Route path="/support" element={<Support />} />
                 </Route>
                 
                 {/* Manager routes */}
@@ -66,6 +69,7 @@ const App = () => (
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/shop" element={<ShopPage />} />
                   <Route path="/gst-filing" element={<GSTFiling />} />
+                  <Route path="/dev-support" element={<DevSupport />} />
                 </Route>
                 
                 {/* Catch-all route */}

@@ -208,7 +208,7 @@ const Transactions = () => {
               {sortedTransactions.length > 0 ? (
                 sortedTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
-                    <TableCell>{transaction.createdAt.toLocaleString()}</TableCell>
+                    <TableCell>{transaction.createdAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</TableCell>
                     <TableCell>{transaction.invoiceNumber}</TableCell>
                     <TableCell>{transaction.customer}</TableCell>
                     <TableCell className="capitalize">{transaction.paymentMethod}</TableCell>

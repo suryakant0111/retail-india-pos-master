@@ -91,8 +91,36 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (product.id.startsWith('manual-')) return false;
       return item.product.id === product.id && !item.variant;
     });
-    
-    console.log('[CartContext] Existing item index:', existingItemIndex);
+
+    // Calculate current quantity in cart
+    let currentCartQty = 0;
+    if (existingItemIndex >= 0) {
+      currentCartQty = items[existingItemIndex].quantity;
+    }
+    const requestedQty = currentCartQty + quantity;
+    // Determine available stock
+    let availableStock = 0;
+    if (product.unitType === 'weight' || product.unitType === 'volume') {
+      // For bulk products, treat null/undefined/0 as infinite
+      if (product.stockByWeight === null || product.stockByWeight === undefined || product.stockByWeight === 0) {
+        availableStock = Infinity;
+      } else {
+        availableStock = product.stockByWeight;
+      }
+    } else {
+      availableStock = product.stock;
+    }
+    // If availableStock is undefined/null, treat as Infinity (for manual/bulk items)
+    if (availableStock === undefined || availableStock === null) availableStock = Infinity;
+    // Prevent adding more than available
+    if (requestedQty > availableStock) {
+      toast({
+        title: 'Stock Limit',
+        description: `Cannot add more than available stock (${availableStock} ${product.unitLabel || 'pcs'}) for ${product.name}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     
     if (existingItemIndex >= 0) {
       // Update existing item

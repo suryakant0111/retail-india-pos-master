@@ -95,7 +95,8 @@ app.post('/remove-employee', requireAdmin, async (req, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'Employee id required' });
   try {
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    // Set status to 'unapproved' (or 'disabled') instead of deleting
+    const { error } = await supabase.from('profiles').update({ status: 'unapproved' }).eq('id', id);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch (err) {
@@ -168,6 +169,26 @@ app.delete('/scanner-session/:sessionId', (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Middleware to block unapproved users
+async function requireApprovedUser(req, res, next) {
+  const userId = req.user.sub;
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('status')
+    .eq('id', userId)
+    .single();
+  if (error || !profile || profile.status !== 'approved') {
+    return res.status(403).json({ error: 'Unauthorized or inactive account' });
+  }
+  next();
+}
+
+// Example usage for POS, products, customers (add to your sensitive routes):
+// app.get('/pos', requireAdmin, requireApprovedUser, (req, res) => { ... });
+// app.get('/products', requireAdmin, requireApprovedUser, (req, res) => { ... });
+// app.get('/customers', requireAdmin, requireApprovedUser, (req, res) => { ... });
+// ...and so on
 
 // Mobile Scanner Session Management
 const mobileSessions = new Map();

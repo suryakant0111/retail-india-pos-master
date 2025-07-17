@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Wifi, CheckCircle, Smartphone, AlertCircle, Camera, Scan } from 'lucide-react';
+import { playBeep } from '@/lib/playBeep';
 
 const MobileScanner = () => {
   const [searchParams] = useSearchParams();
@@ -112,6 +113,7 @@ const MobileScanner = () => {
   };
 
   const handleScan = async (barcode: string) => {
+    playBeep();
     console.log('[MobileScanner] Barcode scanned:', barcode);
     console.log('[MobileScanner] Session ID:', sessionId);
     

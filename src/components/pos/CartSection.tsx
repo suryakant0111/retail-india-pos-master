@@ -199,8 +199,8 @@ export const CartSection: React.FC<CartSectionProps> = ({
   }, [items.length]);
 
   return (
-    <div className="lg:w-1/3 border-l flex flex-col h-full overflow-auto">
-      <div className="p-4 border-b bg-white z-10">
+    <div className="relative z-0 lg:w-[420px] xl:w-[500px] border-l flex flex-col h-full overflow-auto p-2 sm:p-3 lg:p-0">
+      <div className="p-2 sm:p-3 lg:p-4 border-b bg-white">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Current Order</h2>
           {items.length > 0 && (
@@ -226,23 +226,23 @@ export const CartSection: React.FC<CartSectionProps> = ({
         
 
       </div>
-      <div className="p-4 bg-white flex flex-col gap-2">
+      <div className="p-2 sm:p-3 lg:p-4 bg-white flex flex-col gap-2">
         {/* Forgotten Item Input as a card at the top of the cart */}
         <div className="mb-2">
-          <div className="p-4 bg-muted rounded border shadow mb-2">
+          <div className="p-2 sm:p-3 lg:p-4 bg-muted rounded border shadow mb-2">
             <div className="font-medium mb-1">Add Forgotten Item</div>
-            <div className="flex flex-wrap gap-2 mb-1 items-end">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-1 items-stretch sm:items-end w-full">
               <input
                 type="text"
                 placeholder="Item name"
-                className="border rounded px-2 py-1 w-32"
+                className="border rounded px-2 py-2 w-full sm:w-32 text-sm"
                 value={manualName}
                 onChange={e => setManualName(e.target.value)}
               />
               <input
                 type="number"
                 placeholder="Price"
-                className="border rounded px-2 py-1 w-20"
+                className="border rounded px-2 py-2 w-full sm:w-20 text-sm"
                 value={manualPrice}
                 onChange={e => setManualPrice(e.target.value)}
                 min={0.01}
@@ -251,14 +251,14 @@ export const CartSection: React.FC<CartSectionProps> = ({
               <input
                 type="number"
                 placeholder={posMode === 'kirana' ? 'Weight' : 'Qty'}
-                className="border rounded px-2 py-1 w-16"
+                className="border rounded px-2 py-2 w-full sm:w-16 text-sm"
                 value={manualQty}
                 onChange={e => setManualQty(e.target.value)}
                 min={0.01}
                 step={posMode === 'kirana' ? 0.01 : 1}
               />
               <select
-                className="border rounded px-2 py-1"
+                className="border rounded px-2 py-2 w-full sm:w-auto text-sm"
                 value={manualUnit}
                 onChange={e => setManualUnit(e.target.value)}
               >
@@ -268,7 +268,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
                 <option value="ml">ml</option>
                 <option value="pcs">pcs</option>
               </select>
-              <Button size="sm" className="shrink-0" onClick={handleAddManualItem}>Add</Button>
+              <Button size="sm" className="shrink-0 w-full sm:w-auto mt-2 sm:mt-0" onClick={handleAddManualItem}>Add</Button>
             </div>
           </div>
         </div>
@@ -291,21 +291,23 @@ export const CartSection: React.FC<CartSectionProps> = ({
               />
             ))}
             <div ref={cartEndRef} />
-            <div className="mt-4">
-              <OrderSummary
-                subtotal={subtotal}
-                taxTotal={taxTotal}
-                total={total}
-                discountInput={discountInput}
-                setDiscountInput={setDiscountInput}
-                discountTypeInput={discountTypeInput}
-                setDiscountTypeInput={setDiscountTypeInput}
-                handleDiscountChange={handleDiscountChange}
-              />
-              <PaymentButtons
-                disabled={items.length === 0}
-                onPaymentMethodSelect={openPaymentDialog}
-              />
+            <div className="mt-2 lg:mt-4">
+              <div className="space-y-1 p-2 text-xs bg-gray-50 rounded-lg border lg:space-y-4 lg:p-4 lg:text-base">
+                <OrderSummary
+                  subtotal={subtotal}
+                  taxTotal={taxTotal}
+                  total={total}
+                  discountInput={discountInput}
+                  setDiscountInput={setDiscountInput}
+                  discountTypeInput={discountTypeInput}
+                  setDiscountTypeInput={setDiscountTypeInput}
+                  handleDiscountChange={handleDiscountChange}
+                />
+                <PaymentButtons
+                  disabled={items.length === 0}
+                  onPaymentMethodSelect={openPaymentDialog}
+                />
+              </div>
             </div>
           </>
         )}

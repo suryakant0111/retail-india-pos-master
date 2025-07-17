@@ -89,19 +89,19 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
   };
 
   return (
-    <Card className="mb-2 shadow-sm border p-2">
-      <CardContent className="p-4">
-        <div className="flex justify-between">
+    <Card className="mb-2 shadow-sm border p-1 lg:p-2">
+      <CardContent className="p-2 lg:p-4">
+        <div className="flex justify-between gap-1">
           <div className="flex-1">
-            <div className="font-medium">{displayName}</div>
+            <div className="font-medium text-xs truncate">{displayName}</div>
             {item.variant && (
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs text-muted-foreground truncate">
                 {Object.entries(item.variant.attributes)
                   .map(([key, value]) => `${key}: ${value}`)
                   .join(', ')}
               </div>
             )}
-            <div className="text-sm flex items-center gap-2">
+            <div className="text-xs flex items-center gap-1">
               <input
                 type="number"
                 min={1}
@@ -110,43 +110,44 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
                 onChange={handlePriceChange}
                 onBlur={handlePriceBlurOrEnter}
                 onKeyDown={e => { if (e.key === 'Enter') handlePriceBlurOrEnter(); }}
-                className="w-20 text-center border rounded mr-1"
-                style={{ width: 80 }}
+                className="w-14 text-center border rounded mr-1 lg:w-20"
+                style={{ width: 56 }}
               />
-              <span className="text-xs text-muted-foreground">× {item.quantity} {displayUnitLabel}</span>
+              <span className="text-[10px] text-muted-foreground">× {item.quantity} {displayUnitLabel}</span>
               {originalPrice !== undefined && parseFloat(priceInput) < originalPrice && (
-                <span className="ml-2 text-xs text-red-500 line-through">
+                <span className="ml-2 text-[10px] text-red-500 line-through">
                   {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(originalPrice)}
                 </span>
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="font-semibold">
+          <div className="text-right flex flex-col items-end justify-between">
+            <div className="font-semibold text-xs">
               {new Intl.NumberFormat('en-IN', {
                 style: 'currency',
                 currency: 'INR',
               }).format(item.price * item.quantity)}
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-[10px] text-muted-foreground">
               GST: {item.product?.tax ?? 0}%
             </div>
           </div>
         </div>
         
-        <div className="flex items-center justify-between mt-3">
-          <Button variant="outline" size="icon" onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
+        <div className="flex items-center justify-between mt-2 gap-1">
+          <Button variant="outline" size="icon" onClick={onRemove} className="h-7 w-7">
+            <Trash2 className="h-3 w-3" />
           </Button>
           
                       <div className="flex items-center">
               <Button
                 variant="outline"
                 size="icon"
+                className="h-7 w-7"
                 onClick={() => onUpdateQuantity(item.quantity - (posMode === 'kirana' ? 0.1 : 1))}
                 disabled={item.quantity <= (posMode === 'kirana' ? 0.1 : 1)}
               >
-                <Minus className="h-4 w-4" />
+                <Minus className="h-3 w-3" />
               </Button>
               <div className="flex flex-col items-center mx-2">
                 <div className="flex items-center gap-1">
@@ -161,8 +162,8 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
                     onKeyDown={e => {
                       if (e.key === 'Enter') handleInputBlurOrEnter();
                     }}
-                    className={`w-16 text-center border rounded ${inputError ? 'border-red-500' : ''}`}
-                    style={{ width: 64 }}
+                    className={`w-12 text-center border rounded text-xs ${inputError ? 'border-red-500' : ''} lg:w-16`}
+                    style={{ width: 48 }}
                     disabled={item.product?.stock === 0}
                   />
                   {/* Unit selector for weight/volume products */}
@@ -183,15 +184,16 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
                     />
                   )}
                 </div>
-                {inputError && <span className="text-xs text-red-500">{inputError}</span>}
+                {inputError && <span className="text-[10px] text-red-500">{inputError}</span>}
               </div>
               <Button
                 variant="outline"
                 size="icon"
+                className="h-7 w-7"
                 onClick={() => onUpdateQuantity(item.quantity + (posMode === 'kirana' ? 0.1 : 1))}
                 disabled={item.product?.stock && item.quantity >= item.product.stock}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3 w-3" />
               </Button>
             </div>
         </div>

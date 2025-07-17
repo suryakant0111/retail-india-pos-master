@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
@@ -76,10 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ user, profile, loading, accessDenied, signIn, signUp, signOut }}>
       {accessDenied ? (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center">
-          <h2 className="text-2xl font-bold mb-2">Account Pending Approval</h2>
-          <p className="text-muted-foreground mb-4">Your account is not yet approved by an admin. Please contact your administrator.</p>
-        </div>
+        <PendingApprovalScreen />
       ) : (
         children
       )}
@@ -92,3 +90,40 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
+
+export function PendingApprovalScreen() {
+  let navigate;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = (url) => window.location.assign(url);
+  }
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // ignore
+    }
+    if (navigate) {
+      navigate('/login');
+    } else {
+      window.location.assign('/login');
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen">
+      <h2 className="text-2xl font-bold mb-2">Account Pending Approval</h2>
+      <p className="text-lg text-gray-600 mb-4">
+        Your account is not yet approved by an admin. Please contact your administrator.
+      </p>
+      <button
+        onClick={handleLogout}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >
+        Log Out
+      </button>
+    </div>
+  );
+}

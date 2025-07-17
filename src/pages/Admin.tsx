@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import BillPreview from '@/components/pos/BillPreview';
 
 const AdminPage = () => {
   const { profile } = useAuth();
@@ -35,12 +36,143 @@ const AdminPage = () => {
   const [createUserError, setCreateUserError] = useState<string | null>(null);
   const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
   const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
+  const [bills, setBills] = useState<any[]>([]);
+  const [selectedBill, setSelectedBill] = useState<any | null>(null);
+  const [editableShopDetails, setEditableShopDetails] = useState({
+    shopName: '',
+    addressLines: [''],
+    phone: '',
+    gstin: '',
+    state: '',
+  });
+  const [shopDetails, setShopDetails] = useState<any>(null);
+  const [shopSettings, setShopSettings] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    gstin: '',
+    state: '',
+  });
+
+  // Fetch shop settings on mount or when profile.shop_id changes
+  useEffect(() => {
+    if (profile?.shop_id) {
+      supabase
+        .from('shops')
+        .select('name, address, phone, gstin, state')
+        .eq('id', profile.shop_id)
+        .single()
+        .then(({ data }) => {
+          if (data) setShopSettings(data);
+        });
+    }
+  }, [profile?.shop_id]);
 
   useEffect(() => {
     fetchAll();
     fetchPendingEmployees();
     fetchApprovedEmployees();
   }, [profile?.shop_id]);
+
+  // Fetch bills
+  useEffect(() => {
+    async function fetchBills() {
+      if (!profile?.shop_id) return;
+      const { data, error } = await supabase
+        .from('bills')
+        .select('*')
+        .eq('shop_id', profile.shop_id)
+        .order('created_at', { ascending: false });
+      if (data) setBills(data);
+    }
+    fetchBills();
+  }, [profile?.shop_id]);
+
+  useEffect(() => {
+    if (selectedBill) {
+      setEditableShopDetails({
+        shopName: selectedBill.business_details?.shopName || '',
+        addressLines: selectedBill.business_details?.addressLines || [''],
+        phone: selectedBill.business_details?.phone || '',
+        gstin: selectedBill.business_details?.gstin || '',
+        state: selectedBill.business_details?.state || '',
+      });
+    }
+  }, [selectedBill]);
+
+  useEffect(() => {
+    if (selectedBill?.shop_id) {
+      supabase
+        .from('shops')
+        .select('name, address, phone, email, gstin, state')
+        .eq('id', selectedBill.shop_id)
+        .single()
+        .then(({ data }) => {
+          setShopDetails({
+            name: data?.name || '',
+            address: data?.address || '',
+            phone: data?.phone || '',
+            gstin: data?.gstin || '',
+            state: data?.state || '',
+          });
+        });
+    } else {
+      setShopDetails(null);
+    }
+  }, [selectedBill]);
+
+  function amountInWords(amount: number): string {
+    // Simple version, you can improve this
+    const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const formatted = amount.toFixed(2);
+    const parts = formatted.split('.');
+    const rupees = parseInt(parts[0]);
+    const paise = parseInt(parts[1]);
+    if (rupees === 0) return 'Zero Rupees Only';
+    let result = '';
+    const thousands = Math.floor(rupees / 1000);
+    if (thousands > 0) {
+      result += (thousands > 9 ? amountInWords(thousands) : units[thousands]) + ' Thousand ';
+      if (rupees % 1000 === 0) result += 'Rupees Only';
+    }
+    const hundreds = Math.floor((rupees % 1000) / 100);
+    if (hundreds > 0) {
+      result += units[hundreds] + ' Hundred ';
+      if (rupees % 100 === 0) result += 'Rupees Only';
+    }
+    const remaining = rupees % 100;
+    if (remaining > 0) {
+      if (result !== '') result += 'and ';
+      if (remaining < 10) {
+        result += units[remaining] + ' Rupees';
+      } else if (remaining < 20) {
+        result += teens[remaining - 10] + ' Rupees';
+      } else {
+        result += tens[Math.floor(remaining / 10)];
+        if (remaining % 10 > 0) {
+          result += ' ' + units[remaining % 10];
+        }
+        result += ' Rupees';
+      }
+    }
+    if (paise > 0) {
+      result += ' and ';
+      if (paise < 10) {
+        result += units[paise] + ' Paise';
+      } else if (paise < 20) {
+        result += teens[paise - 10] + ' Paise';
+      } else {
+        result += tens[Math.floor(paise / 10)];
+        if (paise % 10 > 0) {
+          result += ' ' + units[paise % 10];
+        }
+        result += ' Paise';
+      }
+    }
+    return result + ' Only';
+  }
 
   const fetchAll = async () => {
     if (!profile?.shop_id) return;
@@ -54,7 +186,11 @@ const AdminPage = () => {
 
   const fetchPendingEmployees = async () => {
     if (!profile?.shop_id) return;
-    const { data, error } = await supabase.from('profiles').select('*').eq('status', 'pending').eq('shop_id', profile.shop_id);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .neq('status', 'approved') // fetch all non-approved employees
+      .eq('shop_id', profile.shop_id);
     setPendingEmployees(data || []);
   };
 
@@ -170,6 +306,8 @@ const AdminPage = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const API_URL = import.meta.env.VITE_API_URL;
+      // Always set status to 'pending' for employees, 'approved' for admin/manager
+      const status = newUserRole === 'employee' ? 'pending' : 'approved';
       const response = await fetch(`${API_URL}/create-user`, {
         method: 'POST',
         headers: {
@@ -180,6 +318,7 @@ const AdminPage = () => {
           email: newUserEmail,
           password: newUserPassword,
           role: newUserRole,
+          status, // pass status to backend
         }),
       });
       const result = await response.json();
@@ -188,6 +327,9 @@ const AdminPage = () => {
       setNewUserEmail('');
       setNewUserPassword('');
       setNewUserRole('employee');
+      // Always refresh both lists
+      fetchPendingEmployees();
+      fetchApprovedEmployees();
     } catch (err: any) {
       setCreateUserError(err.message || 'Failed to create user');
     } finally {
@@ -220,8 +362,101 @@ const AdminPage = () => {
     }
   };
 
+  // Handler to unapprove/disable an employee
+  const handleUnapprove = async (id: string) => {
+    const { error } = await supabase.from('profiles').update({ status: 'unapproved' }).eq('id', id);
+    if (!error) {
+      toast({ title: 'Employee Disabled', description: 'The employee has been disabled.' });
+      fetchApprovedEmployees();
+      fetchPendingEmployees();
+    } else {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  // Handler to re-approve an unapproved employee
+  const handleReapprove = async (id: string) => {
+    const { error } = await supabase.from('profiles').update({ status: 'approved' }).eq('id', id);
+    if (!error) {
+      toast({ title: 'Employee Re-approved', description: 'The employee has been re-approved.' });
+      fetchApprovedEmployees();
+      fetchPendingEmployees();
+    } else {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleSaveShopDetails = async () => {
+    if (!selectedBill) return;
+    const { error } = await supabase
+      .from('bills')
+      .update({ business_details: editableShopDetails })
+      .eq('id', selectedBill.id);
+    if (!error) {
+      // Refresh bills list and selectedBill
+      const { data: updatedBill } = await supabase
+        .from('bills')
+        .select('*')
+        .eq('id', selectedBill.id)
+        .single();
+      setSelectedBill(updatedBill);
+      // Optionally, update the bills list in state
+      setBills(bills => bills.map(b => b.id === updatedBill.id ? updatedBill : b));
+      toast({ title: 'Shop details updated for this bill', variant: 'success' });
+    } else {
+      toast({ title: 'Error updating shop details', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleSaveShopSettings = async () => {
+    if (!profile?.shop_id) return;
+    const { error } = await supabase
+      .from('shops')
+      .update(shopSettings)
+      .eq('id', profile.shop_id);
+    if (!error) {
+      toast({ title: 'Shop settings updated', variant: 'success' });
+      // Optionally, refresh shopDetails for bills
+      if (selectedBill?.shop_id === profile.shop_id) {
+        supabase
+          .from('shops')
+          .select('name, address, phone, gstin, state')
+          .eq('id', profile.shop_id)
+          .single()
+          .then(({ data }) => setShopDetails(data));
+      }
+    } else {
+      toast({ title: 'Error updating shop settings', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  if (selectedBill) {
+    console.log('BillPreview props:', {
+      shopName: shopDetails?.name,
+      addressLines: [shopDetails?.address],
+      phone: shopDetails?.phone,
+      gstin: shopDetails?.gstin,
+      state: shopDetails?.state,
+      billNo: selectedBill.bill_number,
+      date: new Date(selectedBill.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      time: new Date(selectedBill.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      cashier: selectedBill.cashier || profile?.name || '',
+      customer: selectedBill.customer,
+      items: selectedBill.items,
+      subtotal: selectedBill.subtotal,
+      discount: selectedBill.discount,
+      taxableAmount: selectedBill.taxable_amount,
+      taxes: selectedBill.taxes,
+      total: selectedBill.total,
+      amountInWords: amountInWords(selectedBill.total),
+      paymentMethod: selectedBill.payment_method,
+      cashReceived: selectedBill.cash_received,
+      change: selectedBill.change,
+    });
+  }
+
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 w-full">
       <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
       <div className="mb-4 flex justify-end">
         <Link to="/shop">
@@ -236,6 +471,8 @@ const AdminPage = () => {
           <TabsTrigger value="employees">Employees</TabsTrigger>
           <TabsTrigger value="gst-filing">GST Filing</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="bills">Bills</TabsTrigger>
+          <TabsTrigger value="shop-settings">Shop Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="products">
           <Card>
@@ -395,7 +632,7 @@ const AdminPage = () => {
                     <TableRow key={invoice.id}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                       <TableCell>{invoice.customer ? invoice.customer.name : 'Walk-in Customer'}</TableCell>
-                      <TableCell>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}</TableCell>
                       <TableCell className="text-right">₹{invoice.total}</TableCell>
                       <TableCell className="text-right">{invoice.paymentStatus}</TableCell>
                       <TableCell className="text-right">
@@ -466,10 +703,13 @@ const AdminPage = () => {
                         <TableCell>{emp.role}</TableCell>
                         <TableCell>{emp.status}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleApprove(emp.id)}>Approve</Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleReject(emp.id)}>Reject</Button>
-                          </div>
+                          <Button size="sm" onClick={() => handleApprove(emp.id)}>Approve</Button>
+                          {emp.status !== 'approved' && (
+                            <Button size="sm" variant="outline" onClick={() => handleReapprove(emp.id)} className="ml-2">
+                              Re-approve
+                            </Button>
+                          )}
+                          <Button size="sm" variant="destructive" onClick={() => handleReject(emp.id)}>Reject</Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -509,6 +749,9 @@ const AdminPage = () => {
                           <Button size="sm" variant="destructive" onClick={() => handleRemoveEmployee(emp.id)} disabled={removingEmployeeId === emp.id}>
                             {removingEmployeeId === emp.id ? 'Removing...' : 'Remove'}
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleUnapprove(emp.id)} className="ml-2">
+                            Disable
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -542,6 +785,114 @@ const AdminPage = () => {
             </Link>
             <p className="mt-4 text-muted-foreground text-center max-w-md">Generate and download GST-compliant sales reports (GSTR-1) for your business.</p>
           </div>
+        </TabsContent>
+        <TabsContent value="bills">
+          {selectedBill ? (
+            <div>
+              <Button variant="outline" onClick={() => setSelectedBill(null)} className="mb-4">← Back to list</Button>
+              <BillPreview
+                shopName={shopDetails?.name ?? ''}
+                addressLines={[shopDetails?.address ?? '']}
+                phone={shopDetails?.phone ?? ''}
+                gstin={shopDetails?.gstin ?? ''}
+                state={shopDetails?.state ?? ''}
+                billNo={selectedBill.bill_number}
+                date={new Date(selectedBill.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                time={new Date(selectedBill.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                cashier={selectedBill.cashier || profile?.name || ''}
+                customer={selectedBill.customer}
+                items={selectedBill.items}
+                subtotal={selectedBill.subtotal}
+                discount={selectedBill.discount}
+                taxableAmount={selectedBill.taxable_amount}
+                taxes={selectedBill.taxes}
+                total={selectedBill.total}
+                amountInWords={amountInWords(selectedBill.total)}
+                paymentMethod={selectedBill.payment_method}
+                cashReceived={selectedBill.cash_received}
+                change={selectedBill.change}
+              />
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bills</CardTitle>
+                <CardDescription>View and manage all bills</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bill No</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bills.map((bill) => (
+                      <TableRow key={bill.id}>
+                        <TableCell>{bill.bill_number}</TableCell>
+                        <TableCell>{new Date(bill.created_at).toLocaleString()}</TableCell>
+                        <TableCell>{bill.customer?.name || 'Walk-in Customer'}</TableCell>
+                        <TableCell>₹{bill.total.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" onClick={() => setSelectedBill(bill)}>View</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+        <TabsContent value="shop-settings">
+          <Card>
+            <CardHeader>
+              <CardTitle>Shop Settings</CardTitle>
+              <CardDescription>Update your shop's business details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <input
+                type="text"
+                value={shopSettings.name ?? ''}
+                onChange={e => setShopSettings(s => ({ ...s, name: e.target.value }))}
+                placeholder="Shop Name"
+                className="border p-1 rounded w-full"
+              />
+              <input
+                type="text"
+                value={shopSettings.address ?? ''}
+                onChange={e => setShopSettings(s => ({ ...s, address: e.target.value }))}
+                placeholder="Address"
+                className="border p-1 rounded w-full"
+              />
+              <input
+                type="text"
+                value={shopSettings.phone ?? ''}
+                onChange={e => setShopSettings(s => ({ ...s, phone: e.target.value }))}
+                placeholder="Phone"
+                className="border p-1 rounded w-full"
+              />
+              <input
+                type="text"
+                value={shopSettings.gstin ?? ''}
+                onChange={e => setShopSettings(s => ({ ...s, gstin: e.target.value }))}
+                placeholder="GSTIN"
+                className="border p-1 rounded w-full"
+              />
+              <input
+                type="text"
+                value={shopSettings.state ?? ''}
+                onChange={e => setShopSettings(s => ({ ...s, state: e.target.value }))}
+                placeholder="State"
+                className="border p-1 rounded w-full"
+              />
+              <Button onClick={handleSaveShopSettings} className="w-full" variant="secondary">Save Shop Settings</Button>
+            </CardContent>
+          </Card>
         </TabsContent>
         <TabsContent value="settings">
           {/* Remove GST Filing button from here to avoid duplication */}

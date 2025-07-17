@@ -587,7 +587,7 @@ const Dashboard = () => {
   const pendingTotalAll = filteredDisplayInvoices.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'pending' ? (Number(invoice.total) || 0) : 0), 0);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 w-full overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         {isAdmin && (
@@ -697,9 +697,9 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
-          <div className="grid gap-6 mt-6 grid-cols-1 lg:grid-cols-3">
+          <div className="grid gap-6 mt-6 grid-cols-1 lg:grid-cols-3 transition-all duration-300 w-full min-w-[320px]">
             {/* Weekly Sales Chart */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 w-full transition-all duration-300">
               <SalesChart
                 title="Weekly Sales"
                 description="Sales performance for the last 7 days"
@@ -707,7 +707,7 @@ const Dashboard = () => {
               />
             </div>
             {/* Top Selling Products */}
-            <Card>
+            <Card className="w-full transition-all duration-300">
               <CardHeader>
                 <CardTitle>Top Products</CardTitle>
                 <CardDescription>Best selling products this month</CardDescription>
@@ -735,7 +735,7 @@ const Dashboard = () => {
               </CardContent>
             </Card>
             {/* Sales Trend Analysis - moved to its own card above Recent Transactions */}
-            <Card className="col-span-full mb-6">
+            <Card className="col-span-full mb-6 w-full transition-all duration-300">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>

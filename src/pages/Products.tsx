@@ -598,7 +598,7 @@ const Products = () => {
   }
   
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 w-full">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <div>
@@ -825,7 +825,7 @@ const Products = () => {
               <ProductCard
                 product={product}
                 showAddToCart={false}
-                showDeleteButton={!!profile && profile.role === 'admin'}
+                showDeleteButton={!!profile && (profile.role === 'admin' || profile.role === 'manager')}
                     onDelete={deleteProduct}
                 onEdit={() => setEditProduct(product)}
               />
@@ -854,7 +854,7 @@ const Products = () => {
                     <Button size="sm" variant="outline" onClick={() => setEditProduct(product)}>
                       Edit
                     </Button>
-                    {profile?.role === 'admin' && (
+                    {(profile?.role === 'admin' || profile?.role === 'manager') && (
                       <Button size="sm" variant="destructive" onClick={() => deleteProduct(product.id)}>
                         Delete
                       </Button>

@@ -444,6 +444,117 @@ const POS = () => {
           description: `Invoice #${newInvoice.invoiceNumber} saved with status: ${status}`,
           variant: 'success',
         });
+        // --- Insert Bill into Supabase ---
+        try {
+          // Always fetch the latest shop details from DB before inserting the bill
+          let shopDetails = null;
+          if (profile?.shop_id) {
+            const { data: shopData, error: shopError } = await supabase
+              .from('shops')
+              .select('name, address, phone, gstin, state')
+              .eq('id', profile.shop_id)
+              .single();
+            if (shopData) {
+              shopDetails = {
+                businessName: shopData.name,
+                address: shopData.address,
+                phone: shopData.phone,
+                gstNumber: shopData.gstin,
+                state: shopData.state,
+              };
+            }
+          }
+          const billNumber = `MJ/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000000)}`;
+          const businessDetails = {
+            shopName: shopDetails?.businessName || '',
+            addressLines: [shopDetails?.address || ''].filter(Boolean),
+            phone: shopDetails?.phone || '',
+            gstin: shopDetails?.gstNumber || '',
+            state: shopDetails?.state || '',
+          };
+          // Bill items use global taxRate from useCart()
+          const billItems = items.map(item => ({
+            name: item.product?.name || item.name,
+            quantity: item.quantity,
+            unitLabel: item.unitLabel || item.product?.unitLabel || '',
+            price: item.price,
+            totalPrice: item.price * item.quantity,
+            taxRate, // from useCart()
+            taxAmount: (item.price * item.quantity) * (taxRate / 100),
+          }));
+
+          // Calculate discounted subtotal
+          let discountedSubtotal = subtotal;
+          if (discountType === 'percentage') {
+            discountedSubtotal = subtotal * (1 - (discountValue / 100));
+          } else {
+            discountedSubtotal = subtotal - discountValue;
+          }
+          discountedSubtotal = Math.max(0, discountedSubtotal);
+
+          // Build taxes array (CGST/SGST split)
+          const taxes = [];
+          if (taxTotal > 0) {
+            const cgstRate = taxRate / 2;
+            const sgstRate = taxRate / 2;
+            const cgstAmount = taxTotal / 2;
+            const sgstAmount = taxTotal / 2;
+            taxes.push(
+              {
+                name: `CGST@${cgstRate.toFixed(2)}%`,
+                rate: cgstRate,
+                taxable: discountedSubtotal,
+                amount: cgstAmount,
+              },
+              {
+                name: `SGST@${sgstRate.toFixed(2)}%`,
+                rate: sgstRate,
+                taxable: discountedSubtotal,
+                amount: sgstAmount,
+              }
+            );
+          }
+          const { error: billInsertError } = await supabase.from('bills').insert([
+            {
+              bill_number: billNumber,
+              shop_id: profile?.shop_id,
+              items: billItems,
+              customer: customer ? {
+                name: customer.name,
+                phone: customer.phone,
+                gstin: customer.gstin || 'Unregistered',
+              } : { name: 'Walk-in Customer', phone: '-', gstin: 'Unregistered' },
+              subtotal: subtotal,
+              discount: discountValue,
+              taxable_amount: subtotal - discountValue,
+              taxes: taxes,
+              total: total,
+              payment_method: paymentMethod,
+              cash_received: total, // You can adjust this if you track cash received
+              change: 0, // You can adjust this if you track change
+              created_by: profile?.id,
+              cashier: profile?.name || '',
+              business_details: businessDetails,
+              payment_details: safePaymentSettings,
+            }
+          ]);
+          if (billInsertError) {
+            console.error('Error inserting bill:', billInsertError);
+            toast({
+              title: 'Bill Error',
+              description: `Error: ${billInsertError.message}`,
+              variant: 'destructive',
+            });
+          } else {
+            toast({
+              title: 'Bill Saved',
+              description: `Bill #${billNumber} saved successfully!`,
+              variant: 'success',
+            });
+          }
+        } catch (err) {
+          console.error('Error saving bill:', err);
+        }
       }
       // Insert payment into Supabase
       const newPayment = {
@@ -536,30 +647,72 @@ const POS = () => {
     }, 1500);
   };
   
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+  const [cartOpen, setCartOpen] = useState(false);
+  
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)]">
-      <div className={`p-4 overflow-auto ${cartType === 'excel' ? 'w-full' : 'lg:w-2/3'}`}>
-        <DailySalesSummary />
-        
-        {/* Cart Type Toggle */}
-        <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="cart-type"
-              checked={cartType === 'excel'}
-              onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
-            />
-            <Label htmlFor="cart-type">
-              {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
-            </Label>
+    <div className="flex flex-col lg:flex-row h-full min-h-screen relative">
+      <div className="p-2 sm:p-4 overflow-auto flex-1 min-w-0">
+        {/* Mobile: ProductSearch, QuickProductBar, CartTypeToggle, ProductGrid, DailySalesSummary (in this order) */}
+        <div className="block lg:hidden">
+          <QuickProductBar
+            products={products}
+            onSelectProduct={handleQuickAddProduct}
+          />
+          <div className="mb-2 flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="cart-type"
+                checked={cartType === 'excel'}
+                onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
+              />
+              <Label htmlFor="cart-type">
+                {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
+              </Label>
+            </div>
+            <div className="text-xs text-gray-600">
+              {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
+            </div>
           </div>
-          <div className="text-sm text-gray-600">
-            {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
+          <ProductGrid
+            filteredProducts={filteredProducts}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            recentInvoices={recentInvoices}
+          />
+          <div className="mt-2">
+            <ProductSearch 
+              products={products}
+              onSearch={setSearchTerm}
+              searchTerm={searchTerm}
+              category={category}
+              onCategoryChange={setCategory}
+              categories={categories}
+            />
+          </div>
+          <div className="mt-2">
+            <DailySalesSummary />
           </div>
         </div>
-        
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-2">
+        {/* Desktop: original order and spacing */}
+        <div className="hidden lg:block">
+          <DailySalesSummary />
+          <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="cart-type"
+                checked={cartType === 'excel'}
+                onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
+              />
+              <Label htmlFor="cart-type">
+                {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
+              </Label>
+            </div>
+            <div className="text-sm text-gray-600">
+              {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
+            </div>
+          </div>
+          <div className="mb-4 flex items-center gap-2">
             <ProductSearch 
               products={products}
               onSearch={setSearchTerm}
@@ -573,12 +726,10 @@ const POS = () => {
               onProductFound={handleQuickAddProduct}
             />
           </div>
-          
           <QuickProductBar
             products={products}
             onSelectProduct={handleQuickAddProduct}
           />
-          
           <ProductGrid
             filteredProducts={filteredProducts}
             activeTab={activeTab}
@@ -586,8 +737,7 @@ const POS = () => {
             recentInvoices={recentInvoices}
           />
         </div>
-        
-        {/* Excel Cart - Shows below products when active */}
+        {/* Excel Cart - Shows below products when active (unchanged) */}
         {cartType === 'excel' && (
           <div className="mt-8 p-4 bg-gray-50 rounded-lg transition-all duration-300">
             <div className="mb-4">
@@ -811,13 +961,51 @@ const POS = () => {
         )}
       </div>
       
-      {/* POS Cart - Only show when not in Excel mode */}
+      {/* CartSection: always visible on desktop, slide-over on mobile */}
       {cartType === 'pos' && (
-        <CartSection 
-          customers={customers}
-          openPaymentDialog={openPaymentDialog}
-          refreshCustomers={refreshCustomers}
-        />
+        <>
+          {/* Desktop: show CartSection as sidebar as before */}
+          <div className="hidden lg:block h-full">
+            <CartSection 
+              customers={customers}
+              openPaymentDialog={openPaymentDialog}
+              refreshCustomers={refreshCustomers}
+            />
+          </div>
+          {/* Mobile Floating Cart Button and Slide-Over */}
+          <button
+            className="lg:hidden fixed bottom-6 right-6 z-40 bg-indigo-600 text-white rounded-full shadow-lg p-4 flex items-center gap-2 focus:outline-none"
+            onClick={() => setCartOpen(true)}
+            aria-label="Open Cart"
+            style={{ display: cartOpen ? 'none' : 'flex' }}
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.35 2.7A2 2 0 008.48 19h7.04a2 2 0 001.83-1.3L17 13M7 13V6a1 1 0 011-1h5a1 1 0 011 1v7" /></svg>
+            <span className="font-bold">Cart</span>
+            {items.length > 0 && (
+              <span className="ml-2 bg-white text-indigo-600 rounded-full px-2 py-0.5 text-xs font-bold">{items.length}</span>
+            )}
+          </button>
+          {cartOpen && (
+            <div className="fixed inset-0 z-50 flex lg:hidden">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
+              <div className="relative w-full max-w-md ml-auto h-full bg-white shadow-xl flex flex-col">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h2 className="text-xl font-semibold">Current Order</h2>
+                  <button onClick={() => setCartOpen(false)} className="text-gray-500 hover:text-gray-700 p-2 focus:outline-none">
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <CartSection 
+                    customers={customers}
+                    openPaymentDialog={openPaymentDialog}
+                    refreshCustomers={refreshCustomers}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
       
       <PaymentDialog

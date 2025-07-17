@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppSidebar } from '@/components/layout/AppSidebar';
+import { cn } from '@/lib/utils';
 
 interface AuthGuardProps {
   requireAdmin?: boolean;
@@ -15,6 +16,16 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 }) => {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
@@ -37,9 +48,14 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 
   return (
     <div className="flex min-h-screen">
-      <AppSidebar />
-      <div className="flex-1 ml-64 min-w-0">
-        <main className="h-full">
+      <AppSidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <div
+        className={cn(
+          "flex-1 min-w-0 transition-all duration-300",
+          isCollapsed ? "ml-0 lg:ml-16" : "ml-0 lg:ml-64"
+        )}
+      >
+        <main className="h-full w-full min-w-0">
           <Outlet />
         </main>
       </div>
