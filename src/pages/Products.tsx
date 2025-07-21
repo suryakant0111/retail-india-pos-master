@@ -30,7 +30,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import ProductSearchBar from '@/components/products/ProductSearchBar';
 import StockHistoryModal from '@/components/products/StockHistoryModal';
-import BarcodeScanner from '@/components/products/BarcodeScanner';
 
 const Products = () => {
   // State management
@@ -1622,10 +1621,14 @@ const Products = () => {
       />
 
       {/* Mobile QR Scanner */}
-      <BarcodeScanner
+      <MobileQRScanner
         open={showBarcodeScanner}
-        onClose={() => setShowBarcodeScanner(false)}
-        onScan={handleBarcodeScan}
+        onOpenChange={setShowBarcodeScanner}
+        onProductFound={() => {}}
+        onBarcodeScanned={handleBarcodeScan}
+        isPolling={false}
+        setIsPolling={() => {}}
+        stopPollingRef={{ current: undefined }}
       />
     </div>
   );
