@@ -458,7 +458,10 @@ const AdminPage = () => {
   return (
     <div className="p-4 w-full">
       <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <Link to="/bills">
+          <Button variant="secondary">Go to Bills</Button>
+        </Link>
         <Link to="/shop">
           <Button variant="secondary">View Shop Details</Button>
         </Link>
@@ -471,7 +474,6 @@ const AdminPage = () => {
           <TabsTrigger value="employees">Employees</TabsTrigger>
           <TabsTrigger value="gst-filing">GST Filing</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
-          <TabsTrigger value="bills">Bills</TabsTrigger>
           <TabsTrigger value="shop-settings">Shop Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="products">
@@ -785,68 +787,6 @@ const AdminPage = () => {
             </Link>
             <p className="mt-4 text-muted-foreground text-center max-w-md">Generate and download GST-compliant sales reports (GSTR-1) for your business.</p>
           </div>
-        </TabsContent>
-        <TabsContent value="bills">
-          {selectedBill ? (
-            <div>
-              <Button variant="outline" onClick={() => setSelectedBill(null)} className="mb-4">← Back to list</Button>
-              <BillPreview
-                shopName={shopDetails?.name ?? ''}
-                addressLines={[shopDetails?.address ?? '']}
-                phone={shopDetails?.phone ?? ''}
-                gstin={shopDetails?.gstin ?? ''}
-                state={shopDetails?.state ?? ''}
-                billNo={selectedBill.bill_number}
-                date={new Date(selectedBill.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                time={new Date(selectedBill.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                cashier={selectedBill.cashier || profile?.name || ''}
-                customer={selectedBill.customer}
-                items={selectedBill.items}
-                subtotal={selectedBill.subtotal}
-                discount={selectedBill.discount}
-                taxableAmount={selectedBill.taxable_amount}
-                taxes={selectedBill.taxes}
-                total={selectedBill.total}
-                amountInWords={amountInWords(selectedBill.total)}
-                paymentMethod={selectedBill.payment_method}
-                cashReceived={selectedBill.cash_received}
-                change={selectedBill.change}
-              />
-            </div>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Bills</CardTitle>
-                <CardDescription>View and manage all bills</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Bill No</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bills.map((bill) => (
-                      <TableRow key={bill.id}>
-                        <TableCell>{bill.bill_number}</TableCell>
-                        <TableCell>{new Date(bill.created_at).toLocaleString()}</TableCell>
-                        <TableCell>{bill.customer?.name || 'Walk-in Customer'}</TableCell>
-                        <TableCell>₹{bill.total.toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm" onClick={() => setSelectedBill(bill)}>View</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
         <TabsContent value="shop-settings">
           <Card>

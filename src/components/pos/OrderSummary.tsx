@@ -11,7 +11,7 @@ interface OrderSummaryProps {
   setDiscountInput: (value: string) => void;
   discountTypeInput: 'percentage' | 'fixed';
   setDiscountTypeInput: (type: 'percentage' | 'fixed') => void;
-  handleDiscountChange: () => void;
+  // handleDiscountChange: () => void; // Remove this prop
 }
 
 export const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -22,7 +22,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   setDiscountInput,
   discountTypeInput,
   setDiscountTypeInput,
-  handleDiscountChange
+  // handleDiscountChange
 }) => {
   const { taxRate, setTaxRate } = useCart();
   return (
@@ -64,7 +64,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         setDiscountInput={setDiscountInput}
         discountTypeInput={discountTypeInput}
         setDiscountTypeInput={setDiscountTypeInput}
-        handleDiscountChange={handleDiscountChange}
+        // handleDiscountChange={handleDiscountChange}
       />
       
       <div className="flex justify-between text-lg font-bold mt-4">

@@ -124,3 +124,17 @@
     @apply grid grid-cols-1 md:grid-cols-3 gap-4 mb-8;
   }
 }
+
+@media print {
+  #bill-preview-print-area {
+    margin: 0 auto !important;
+    float: none !important;
+    display: block !important;
+    width: 80mm !important;
+    background: white !important;
+    box-shadow: none !important;
+  }
+  body {
+    background: white !important;
+  }
+}

@@ -7,6 +7,8 @@ import { Trash2, Plus, Minus } from 'lucide-react';
 import { useState } from 'react';
 import { UnitSelector } from './UnitSelector';
 import { convertUnit } from '@/lib/utils';
+import { useStockBatches } from '@/contexts/StockBatchContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface CartItemCardProps {
   item: CartItem;
@@ -15,6 +17,7 @@ interface CartItemCardProps {
   onUpdateQuantity: (qty: number) => void;
   onUpdateQuantityWithUnit: (qty: number, unitLabel: string) => void;
   onUpdatePrice: (price: number) => void;
+  onBatchChange?: (batchId: string | null) => void;
   posMode?: 'retail' | 'kirana';
   unitLabel?: string;
   unitType?: 'unit' | 'weight' | 'volume' | 'length';
@@ -27,6 +30,7 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
   onUpdateQuantity, 
   onUpdateQuantityWithUnit,
   onUpdatePrice,
+  onBatchChange,
   posMode = 'retail',
   unitLabel,
   unitType
@@ -88,12 +92,56 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({
     if (val !== item.price) onUpdatePrice(val);
   };
 
+  const { stockBatches } = useStockBatches();
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const productBatches = item.product ? stockBatches.filter(b => b.productId === item.product.id && b.quantity > 0) : [];
+  const selectedBatch = item.batchId ? productBatches.find(b => b.id === item.batchId) : null;
+
   return (
     <Card className="mb-2 shadow-sm border p-1 lg:p-2">
       <CardContent className="p-2 lg:p-4">
         <div className="flex justify-between gap-1">
           <div className="flex-1">
             <div className="font-medium text-xs truncate">{displayName}</div>
+            {/* Batch selection UI */}
+            {item.product && productBatches.length > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className={`px-2 py-1 rounded text-xs font-semibold ${selectedBatch ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-gray-100 text-gray-700 border border-gray-300'}`}
+                  title={selectedBatch ? `Batch: ${new Date(selectedBatch.createdAt).toLocaleDateString()} (${selectedBatch.quantity} left)` : 'Auto (FIFO)'}>
+                  {selectedBatch
+                    ? `Batch: ${new Date(selectedBatch.createdAt).toLocaleDateString()} (${selectedBatch.quantity} left)`
+                    : 'Batch: Auto (FIFO)'}
+                </span>
+                <Button size="sm" variant="outline" className="px-2 py-0 h-6 text-xs ml-1" onClick={() => setShowBatchModal(true)}>
+                  Change
+                </Button>
+              </div>
+            )}
+            {/* Batch selection modal */}
+            <Dialog open={showBatchModal} onOpenChange={setShowBatchModal}>
+              <DialogContent className="max-w-xs">
+                <DialogHeader>
+                  <DialogTitle>Select Batch</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {productBatches.length === 0 ? (
+                    <div className="text-muted-foreground text-xs">No batches available.</div>
+                  ) : (
+                    productBatches.map(batch => (
+                      <div key={batch.id} className="border rounded p-2 flex flex-col gap-1 cursor-pointer hover:bg-blue-50"
+                        onClick={() => { onBatchChange?.(batch.id); setShowBatchModal(false); }}>
+                        <div className="font-semibold text-xs">{new Date(batch.createdAt).toLocaleDateString()} ({batch.quantity} left)</div>
+                        <div className="text-xs text-muted-foreground">{batch.note || 'No note'}</div>
+                      </div>
+                    ))
+                  )}
+                  <Button size="sm" variant="ghost" className="w-full mt-2" onClick={() => { onBatchChange?.(null); setShowBatchModal(false); }}>
+                    Auto (FIFO)
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+            {/* End batch selection UI */}
             {item.variant && (
               <div className="text-xs text-muted-foreground truncate">
                 {Object.entries(item.variant.attributes)

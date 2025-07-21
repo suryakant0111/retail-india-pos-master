@@ -6,7 +6,6 @@ import { UpiQRCode } from '@/components/pos/UpiQRCode';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PaymentSettings {
   upiId: string;
@@ -20,7 +19,11 @@ interface PaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   paymentMethod: 'cash' | 'upi' | 'card';
-  total: number;
+  subtotal: number;
+  discount: number;
+  discountType: 'percentage' | 'fixed';
+  taxRate: number;
+  total?: number;
   paymentSuccess: boolean;
   onPaymentConfirmed: (status: 'paid' | 'pending') => void;
   generateReference: () => string;
@@ -29,18 +32,22 @@ interface PaymentDialogProps {
 export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   open,
   onOpenChange,
-  paymentMethod = 'cash', // Provide default value
-  total = 0, // Provide default value
-  paymentSuccess = false, // Provide default value
-  onPaymentConfirmed = () => {}, // Provide default function
-  generateReference = () => 'REF' + Date.now().toString() // Provide default function
+  paymentMethod = 'cash',
+  subtotal = 0,
+  discount = 0,
+  discountType = 'percentage',
+  taxRate = 0,
+  total: totalProp = 0,
+  paymentSuccess = false,
+  onPaymentConfirmed = () => {},
+  generateReference = () => 'REF' + Date.now().toString()
 }) => {
+  // Debug log
+  console.log('PaymentDialog received:', { discount, discountType, subtotal, taxRate });
   const [upiId, setUpiId] = useState('7259538046@ybl');
   const [reference, setReference] = useState('');
   const { profile } = useProfile();
-  // Remove paymentStatus state and dropdown
   
-  // Generate a reference only when the dialog first opens, not on every render
   useEffect(() => {
     if (open && !reference && typeof generateReference === 'function') {
       try {
@@ -53,10 +60,8 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, [open, generateReference, reference]);
   
-  // Reset reference when dialog closes
   useEffect(() => {
     if (!open) {
-      // Wait a bit to reset the reference to avoid flicker on close
       const timer = setTimeout(() => {
         setReference('');
       }, 300);
@@ -65,7 +70,6 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [open]);
   
   useEffect(() => {
-    // Fetch payment settings from Supabase
     async function fetchPaymentSettings() {
       if (!profile?.shop_id) return;
       const { data, error } = await supabase
@@ -73,61 +77,56 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         .select('payment_settings')
         .eq('shop_id', profile.shop_id)
         .single();
-      if (data && data.payment_settings && data.payment_settings.upiId) {
+      if (data?.payment_settings?.upiId) {
         setUpiId(data.payment_settings.upiId);
       }
     }
     fetchPaymentSettings();
   }, [profile?.shop_id]);
   
-  // Safe handler for payment confirmation
   const handlePaymentConfirmed = (status: 'paid' | 'pending') => {
-    if (typeof onPaymentConfirmed === 'function') {
       try {
         onPaymentConfirmed(status);
       } catch (error) {
         console.error('Error confirming payment:', error);
-      }
     }
   };
   
-  // Safe handler for dialog close
   const handleOpenChange = (newOpen: boolean) => {
-    if (typeof onOpenChange === 'function') {
       try {
         onOpenChange(newOpen);
       } catch (error) {
         console.error('Error changing dialog state:', error);
-      }
     }
   };
   
-  // Ensure we always have a stable reference for UPI component
   const currentReference = reference || 'REF' + Date.now().toString();
+  
+  const discountAmount = discountType === 'percentage'
+    ? (discount / 100) * subtotal
+    : discount;
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+    const taxTotal = taxableAmount * (taxRate / 100);
+  const total = taxableAmount + taxTotal;
   
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-w-[400px] p-2 sm:p-3">
         <DialogHeader>
-          <DialogTitle>
-            {paymentMethod === 'cash' ? 'Cash Payment' : 
-             paymentMethod === 'upi' ? 'UPI Payment' : 
-             'Card Payment'}
+          <DialogTitle className="text-base">
+            {paymentMethod === 'cash' ? 'Cash Payment' : paymentMethod === 'upi' ? 'UPI Payment' : 'Card Payment'}
           </DialogTitle>
         </DialogHeader>
-        
-        {/* Payment Status Selector */}
-        {/* Removed payment status dropdown */}
-        
+
         {paymentSuccess && (
-          <Alert variant="success" className="mb-4">
-            <AlertTitle>Payment Successful</AlertTitle>
-            <AlertDescription>
+          <Alert variant="success" className="mb-2 text-xs p-2">
+            <AlertTitle className="text-sm">Payment Successful</AlertTitle>
+            <AlertDescription className="text-xs">
               Transaction completed successfully.
             </AlertDescription>
           </Alert>
         )}
-        
+
         {paymentMethod === 'upi' ? (
           <UpiQRCode 
             amount={total} 
@@ -136,37 +135,59 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
             onPaymentConfirmed={() => handlePaymentConfirmed('paid')} 
           />
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>
+          <Card className="bg-white shadow-none border-none p-0 w-full flex flex-col">
+            <CardHeader className="p-2 pb-1">
+              <CardTitle className="text-base">
                 {paymentMethod === 'cash' ? 'Cash Payment' : 'Card Payment'}
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-center text-2xl font-bold mb-4">
-                {new Intl.NumberFormat('en-IN', {
-                  style: 'currency',
-                  currency: 'INR',
-                }).format(total)}
+            <CardContent className="p-2">
+              <div className="mb-2">
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Subtotal:</span>
+                  <span>₹{subtotal.toFixed(2)}</span>
+                </div>
+                {discountAmount > 0 && (
+                <div className="flex justify-between text-xs mb-1">
+                    <span>Discount ({discountType === 'percentage' ? `${discount}%` : `₹${discount}`}):</span>
+  <span>₹{discountAmount.toFixed(2)}</span>
+</div>
+                )}
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Taxable Amount:</span>
+                  <span>₹{taxableAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Tax ({taxRate}%):</span>
+                  <span>₹{taxTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold border-t pt-1 mt-1">
+                  <span>Total:</span>
+                  <span>₹{total.toFixed(2)}</span>
+                </div>
               </div>
-              <div className="text-center text-muted-foreground mb-6">
+              <div className="text-center text-muted-foreground mb-2 text-xs">
                 {paymentMethod === 'cash' ? 
                   'Collect cash from customer' : 
                   'Process card payment via machine'}
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between gap-2">
-              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+
+            <CardFooter className="flex justify-between gap-1 p-2 pt-1 w-full min-w-0">
+              <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <div className="flex gap-2">
-                <Button onClick={() => handlePaymentConfirmed('paid')}>
-                  Mark as Paid
-                </Button>
-                <Button variant="outline" className="border-yellow-400 text-yellow-700 hover:bg-yellow-50" onClick={() => handlePaymentConfirmed('pending')}>
-                  Mark as Pending
-                </Button>
-              </div>
+              <Button size="sm" onClick={() => handlePaymentConfirmed('paid')}>
+                Mark as Paid
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-yellow-400 text-yellow-700 hover:bg-yellow-50"
+                onClick={() => handlePaymentConfirmed('pending')}
+              >
+                Mark as Pending
+              </Button>
             </CardFooter>
           </Card>
         )}

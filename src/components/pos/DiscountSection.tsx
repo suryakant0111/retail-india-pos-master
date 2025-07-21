@@ -8,7 +8,7 @@ interface DiscountSectionProps {
   setDiscountInput: (value: string) => void;
   discountTypeInput: 'percentage' | 'fixed';
   setDiscountTypeInput: (type: 'percentage' | 'fixed') => void;
-  handleDiscountChange: () => void;
+  // handleDiscountChange: () => void; // Remove this prop
 }
 
 export const DiscountSection: React.FC<DiscountSectionProps> = ({
@@ -16,7 +16,7 @@ export const DiscountSection: React.FC<DiscountSectionProps> = ({
   setDiscountInput,
   discountTypeInput,
   setDiscountTypeInput,
-  handleDiscountChange
+  // handleDiscountChange
 }) => {
   return (
     <div className="flex items-center gap-2 mb-2">
@@ -35,9 +35,7 @@ export const DiscountSection: React.FC<DiscountSectionProps> = ({
         <option value="percentage">%</option>
         <option value="fixed">₹ Fixed</option>
       </select>
-      <Button variant="outline" size="sm" onClick={handleDiscountChange}>
-        Apply
-      </Button>
+      {/* Remove Apply button */}
     </div>
   );
 };

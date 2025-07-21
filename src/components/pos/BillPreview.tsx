@@ -32,6 +32,7 @@ export interface BillPreviewProps {
   cashReceived: number;
   change: number;
   terms?: string[];
+  discountType: 'percentage' | 'fixed';
 }
 
 export const BillPreview: React.FC<BillPreviewProps> = ({
@@ -60,6 +61,7 @@ export const BillPreview: React.FC<BillPreviewProps> = ({
     '* Goods once sold will not be taken back',
     '* All disputes subject to local jurisdiction',
   ],
+  discountType,
 }) => {
   // Debug log for all props
   console.log('BillPreview received props:', {
@@ -85,10 +87,19 @@ export const BillPreview: React.FC<BillPreviewProps> = ({
     cashReceived,
     change,
     terms,
+    discountType,
   });
   if (!shopName || !addressLines?.[0] || !phone || !gstin || !state) {
     console.warn('BillPreview: One or more shop details are missing!', { shopName, addressLines, phone, gstin, state });
   }
+
+  // Calculate values to match CartContext logic
+  const computedTaxableAmount = taxableAmount;
+  // Try to get a single tax rate from taxes array, fallback to 0
+  const computedTaxTotal = taxes.reduce((sum, tax) => sum + tax.amount, 0);
+
+  const computedTotal = computedTaxableAmount + computedTaxTotal;
+
   return (
     <div className="invoice" style={{ width: '80mm', fontFamily: 'Courier New, monospace', fontSize: 10, margin: 0, padding: 0, lineHeight: 1.2 }}>
       {/* Header */}
@@ -154,12 +165,18 @@ export const BillPreview: React.FC<BillPreviewProps> = ({
           <span>₹{subtotal.toFixed(2)}</span>
         </div>
         <div className="subtotal-row" style={{ display: 'flex', justifyContent: 'space-between', margin: '2px 0', fontSize: 9 }}>
-          <span>Discount:</span>
-          <span>₹{discount.toFixed(2)}</span>
+          <span>
+            Discount{discountType === 'percentage' ? ` (${discount}%)` : ''}:
+          </span>
+          <span>
+            -₹{discountType === 'percentage'
+              ? (subtotal * (discount / 100)).toFixed(2)
+              : discount.toFixed(2)}
+          </span>
         </div>
         <div className="subtotal-row" style={{ display: 'flex', justifyContent: 'space-between', margin: '2px 0', fontSize: 9 }}>
           <span>Taxable Amount:</span>
-          <span>₹{taxableAmount.toFixed(2)}</span>
+          <span>₹{computedTaxableAmount.toFixed(2)}</span>
         </div>
       </div>
 
@@ -179,8 +196,8 @@ export const BillPreview: React.FC<BillPreviewProps> = ({
               <tr key={idx}>
                 <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>{tax.name}</td>
                 <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>{tax.rate}%</td>
-                <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>₹{tax.taxable.toFixed(2)}</td>
-                <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>₹{tax.amount.toFixed(2)}</td>
+                <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>₹{computedTaxableAmount.toFixed(2)}</td>
+                <td style={{ padding: '1px 2px', fontSize: 8, textAlign: 'center' }}>₹{(computedTaxableAmount * (tax.rate / 100)).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
@@ -190,7 +207,7 @@ export const BillPreview: React.FC<BillPreviewProps> = ({
       {/* Total */}
       <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', margin: '2px 0', fontSize: 10, fontWeight: 'bold', borderTop: '1px dashed #000', paddingTop: 3 }}>
         <span>TOTAL AMOUNT:</span>
-        <span>₹{total.toFixed(2)}</span>
+        <span>₹{computedTotal.toFixed(2)}</span>
       </div>
 
       {/* Amount in Words */}

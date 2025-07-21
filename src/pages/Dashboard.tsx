@@ -17,6 +17,7 @@ import { useProfile } from '@/hooks/useProfile';
 import * as XLSX from 'xlsx';
 import { TrendingUp, Flag } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { DailySalesSummary } from '@/components/pos/DailySalesSummary';
 
 // Helper to convert a UTC date string to IST Date object
 function toIST(dateString: string) {
@@ -587,53 +588,100 @@ const Dashboard = () => {
   const pendingTotalAll = filteredDisplayInvoices.reduce((sum, invoice) => sum + (invoice.paymentStatus === 'pending' ? (Number(invoice.total) || 0) : 0), 0);
 
   return (
-    <div className="p-4 w-full overflow-x-hidden">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
+    <div className="p-2 sm:p-4 w-full overflow-x-hidden max-w-7xl mx-auto">
+      {/* Sticky header for dashboard title and sales summary on mobile */}
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-2 py-2 sm:py-4">
+        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
         {isAdmin && (
-          <Button onClick={() => setShowTargetDialog(true)} className="mt-4 md:mt-0">
+          <Button onClick={() => setShowTargetDialog(true)} className="mt-2 sm:mt-0">
             Set Sales Target
           </Button>
         )}
       </div>
-      {/* Filter Controls */}
-      <div className="flex flex-wrap gap-4 mb-4 items-end">
-        <div>
-          <label className="block text-sm font-medium mb-1">Start Date</label>
-          <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="border p-2 rounded" />
+      {/* Daily Sales Summary */}
+      <DailySalesSummary />
+      {/* Filter Controls - visually compact and professional on mobile */}
+      <div className="mb-4">
+        <div className="hidden sm:flex flex-row flex-wrap gap-2 items-end">
+          {/* Desktop/Tablet: original layout */}
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1">Start Date</label>
+            <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="border p-2 rounded text-xs sm:text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1">End Date</label>
+            <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="border p-2 rounded text-xs sm:text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1">Payment Method</label>
+            <select value={filterPaymentMethod} onChange={e => setFilterPaymentMethod(e.target.value)} className="border p-2 rounded text-xs sm:text-sm">
+              <option value="all">All</option>
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1">Product</label>
+            <select value={filterProduct} onChange={e => setFilterProduct(e.target.value)} className="border p-2 rounded text-xs sm:text-sm">
+              <option value="all">All</option>
+              {allProducts.map(product => (
+                <option key={product} value={product}>{product}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1">Category</label>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="border p-2 rounded text-xs sm:text-sm">
+              <option value="all">All</option>
+              {allCategories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-4 py-2 rounded text-xs sm:text-sm ml-auto">Download Excel</button>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">End Date</label>
-          <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="border p-2 rounded" />
+        {/* Mobile: compact, professional redesign */}
+        <div className="sm:hidden bg-white rounded-xl shadow-sm border p-3 grid grid-cols-2 gap-2 items-end">
+          <div>
+            <label className="block text-[11px] font-medium mb-0.5">Start</label>
+            <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="border p-1.5 rounded text-xs w-full" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium mb-0.5">End</label>
+            <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="border p-1.5 rounded text-xs w-full" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium mb-0.5">Payment</label>
+            <select value={filterPaymentMethod} onChange={e => setFilterPaymentMethod(e.target.value)} className="border p-1.5 rounded text-xs w-full">
+              <option value="all">All</option>
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium mb-0.5">Product</label>
+            <select value={filterProduct} onChange={e => setFilterProduct(e.target.value)} className="border p-1.5 rounded text-xs w-full">
+              <option value="all">All</option>
+              {allProducts.map(product => (
+                <option key={product} value={product}>{product}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium mb-0.5">Category</label>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="border p-1.5 rounded text-xs w-full">
+              <option value="all">All</option>
+              {allCategories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2 flex justify-end mt-1">
+            <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs">Download</button>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Payment Method</label>
-          <select value={filterPaymentMethod} onChange={e => setFilterPaymentMethod(e.target.value)} className="border p-2 rounded">
-            <option value="all">All</option>
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-            <option value="card">Card</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Product</label>
-          <select value={filterProduct} onChange={e => setFilterProduct(e.target.value)} className="border p-2 rounded">
-            <option value="all">All</option>
-            {allProducts.map(product => (
-              <option key={product} value={product}>{product}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Category</label>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="border p-2 rounded">
-            <option value="all">All</option>
-            {allCategories.map(category => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-        </div>
-        <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-4 py-2 rounded">Download Excel</button>
       </div>
       {/* Stock Alerts Section */}
       {lowStockProducts.length > 0 && (
@@ -737,7 +785,7 @@ const Dashboard = () => {
             {/* Sales Trend Analysis - moved to its own card above Recent Transactions */}
             <Card className="col-span-full mb-6 w-full transition-all duration-300">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                   <div>
                     <CardTitle>Sales Trend Analysis</CardTitle>
                     <CardDescription>
@@ -753,7 +801,7 @@ const Dashboard = () => {
                       }
                     </CardDescription>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     {/* Chart filter buttons */}
                     <Button
                       variant={chartTimeFilter === 'today' ? 'default' : 'outline'}
@@ -797,7 +845,7 @@ const Dashboard = () => {
                     </Button>
                   </div>
                   {/* Custom Date Range Inputs */}
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex gap-2 mt-2 flex-wrap">
                     <div>
                       <label className="block text-xs font-medium mb-1">Start Date</label>
                       <input 
@@ -912,14 +960,14 @@ const Dashboard = () => {
                 </div>
               </CardFooter>
             </Card>
-            {/* Recent Transactions Section - fix product name cell for long names */}
+            {/* Recent Transactions Section - make table horizontally scrollable and compact on mobile */}
             <Card className="col-span-full">
               <CardHeader>
                 <CardTitle>Recent Transactions</CardTitle>
                 <CardDescription>Your recent sales transactions</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
+                <div className="rounded-md border overflow-x-auto">
                    {/* Debug Info */}
                    {filterTransactionStartDate || filterTransactionEndDate ? (
                      <div className="p-2 bg-yellow-50 border-l-4 border-yellow-400 mb-2">
@@ -1043,7 +1091,7 @@ const Dashboard = () => {
                       </button>
                     </div>
                   </div>
-                  <table className="w-full pos-table">
+                  <table className="w-full min-w-[700px] text-xs sm:text-sm pos-table">
                     <thead>
                       <tr>
                         <th>Invoice #</th>
@@ -1060,11 +1108,7 @@ const Dashboard = () => {
                       {paginatedTransactions.map((invoice) => (
                         <tr key={invoice.id}>
                           <td>{invoice.invoiceNumber}</td>
-                          <td>{
-                            invoice.createdAt
-                              ? new Date(invoice.createdAt).toLocaleDateString()
-                              : '-'
-                          }</td>
+                          <td>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '-'}</td>
                           <td>{invoice.customer?.name || 'Walk-in Customer'}</td>
                           <td>{invoice.customer?.city || invoice.customer?.address || '-'}</td>
                           <td>

@@ -40,6 +40,7 @@ export interface CartItem {
   originalUnitLabel?: string; // Original unit label from product
   convertedQuantity?: number; // Quantity in customer's preferred unit
   convertedUnitLabel?: string; // Customer's preferred unit
+  batchId?: string | null; // Selected stock batch for this cart item
 }
 
 export interface Product {
@@ -148,4 +149,18 @@ export interface KiranaCartItem extends CartItem {
   weight?: number; // For weight-based products
   weightUnit?: string; // kg, g, L, ml
   pricePerUnit?: number; // Price per kg/g/L/ml
+}
+
+export interface StockAdjustment {
+  id: string;
+  productId?: string; // Optional, for legacy/camelCase use
+  product_id?: string; // Supabase/DB snake_case
+  batch_id?: string; // For linking out adjustments to in batches
+  quantity: number; // positive for addition, negative for removal
+  type: 'in' | 'out'; // 'in' for new stock, 'out' for removal/loss
+  note?: string;
+  createdAt?: Date; // Optional, for camelCase
+  created_at?: string; // Supabase/DB snake_case
+  userId?: string; // who did the adjustment
+  user_id?: string; // Supabase/DB snake_case
 }

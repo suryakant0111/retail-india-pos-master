@@ -11,11 +11,12 @@ interface CartContextType {
   discountType: 'percentage' | 'fixed';
   taxRate: number;
   setTaxRate: (rate: number) => void;
-  addItem: (product: Product, quantity: number, variant?: ProductVariant) => void;
+  addItem: (product: Product, quantity: number, variant?: ProductVariant, batchId?: string | null) => void;
   removeItem: (index: number) => void;
   updateQuantity: (index: number, quantity: number) => void;
   updateQuantityWithUnit: (index: number, quantity: number, unitLabel: string) => void;
   updatePrice: (index: number, price: number) => void;
+  updateBatchId: (index: number, batchId: string | null) => void;
   clearCart: () => void;
   setCustomer: (customer: Customer | null) => void;
   setDiscount: (value: number, type: 'percentage' | 'fixed') => void;
@@ -36,6 +37,7 @@ const CartContext = createContext<CartContextType>({
   updateQuantity: () => {},
   updateQuantityWithUnit: () => {},
   updatePrice: () => {},
+  updateBatchId: () => {},
   clearCart: () => {},
   setCustomer: () => {},
   setDiscount: () => {},
@@ -66,8 +68,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const taxTotal = discountedSubtotal * (taxRate / 100);
   let finalTotal = discountedSubtotal + taxTotal;
   finalTotal = Math.max(0, finalTotal);
+
+  // Debug log for calculation
+  console.log('CartContext totals:', { subtotal, discountedSubtotal, taxTotal, finalTotal, discountValue, discountType, taxRate });
   
-  const addItem = (product: Product, quantity: number, variant?: ProductVariant) => {
+  const addItem = (product: Product, quantity: number, variant?: ProductVariant, batchId?: string | null) => {
     console.log('[CartContext] addItem called with:', { product, quantity, variant });
     console.log('[CartContext] Current items before adding:', items);
     
@@ -81,14 +86,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     console.log('[CartContext] Calculated price:', price);
-    
+
     // Check if this product/variant is already in cart
     const existingItemIndex = items.findIndex(item => {
       if (variant) {
         return item.product.id === product.id && item.variant?.id === variant.id;
       }
       // For manual items, never merge (unique id)
-      if (product.id.startsWith('manual-')) return false;
+      if (product.id.startsWith('manual-') || product.id.startsWith('adhoc-')) return false;
       return item.product.id === product.id && !item.variant;
     });
 
@@ -98,6 +103,46 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentCartQty = items[existingItemIndex].quantity;
     }
     const requestedQty = currentCartQty + quantity;
+
+    // --- ALLOW AD-HOC PRODUCTS WITHOUT STOCK CHECK ---
+    if ((typeof product === 'object' && 'isAdhoc' in product && (product as any).isAdhoc) || (typeof product.id === 'string' && product.id.startsWith('adhoc-'))) {
+      // Skip stock check for ad-hoc products
+      if (existingItemIndex >= 0) {
+        // Update existing item
+        const updatedItems = [...items];
+        const existingItem = updatedItems[existingItemIndex];
+        updatedItems[existingItemIndex] = {
+          ...existingItem,
+          quantity: existingItem.quantity + quantity,
+          totalPrice: (existingItem.price * (existingItem.quantity + quantity))
+        };
+        setItems(updatedItems);
+      } else {
+        // Add new item
+        const newItem = {
+          product,
+          variant,
+          quantity,
+          price,
+          totalPrice: (price * quantity),
+          unitLabel: product.unitLabel,
+          unitType: product.unitType,
+          originalQuantity: quantity,
+          originalUnitLabel: product.unitLabel,
+          convertedQuantity: quantity,
+          convertedUnitLabel: product.unitLabel,
+          batchId: batchId || null,
+        };
+        setItems([...items, newItem]);
+      }
+      toast({
+        title: "Item added",
+        description: `${quantity} x ${product.name} added to cart`,
+      });
+      return;
+    }
+    // --- END AD-HOC BYPASS ---
+
     // Determine available stock
     let availableStock = 0;
     if (product.unitType === 'weight' || product.unitType === 'volume') {
@@ -151,6 +196,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         originalUnitLabel: product.unitLabel,
         convertedQuantity: quantity,
         convertedUnitLabel: product.unitLabel,
+        batchId: batchId || null,
       };
       console.log('[CartContext] New item to add:', newItem);
       setItems([...items, newItem]);
@@ -272,6 +318,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setItems(updatedItems);
   };
+
+  const updateBatchId = (index: number, batchId: string | null) => {
+    setItems(items => items.map((item, i) => i === index ? { ...item, batchId } : item));
+  };
   
   const clearCart = () => {
     setItems([]);
@@ -309,6 +359,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateQuantity,
         updateQuantityWithUnit,
         updatePrice,
+        updateBatchId,
         clearCart,
         setCustomer,
         setDiscount,

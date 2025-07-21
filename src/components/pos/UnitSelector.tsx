@@ -32,7 +32,7 @@ export const UnitSelector: React.FC<UnitSelectorProps> = ({
 
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={`w-16 ${className}`}>
+      <SelectTrigger className={`w-24 ${className}`}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

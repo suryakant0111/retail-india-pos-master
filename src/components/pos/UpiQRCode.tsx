@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Loader2, CheckCircle, AlertCircle, Smartphone, MessageSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { checkPaymentStatus } from '@/lib/payment-status';
 
 interface UpiQRCodeProps {
@@ -38,6 +39,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
   const [confirmationMethod, setConfirmationMethod] = useState<'manual' | 'sms' | 'notification'>('manual');
   const { profile } = useProfile();
+  const isMobile = useIsMobile();
 
   // Auto-check payment status every 30 seconds
   useEffect(() => {
@@ -126,35 +128,69 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
     }
   };
 
-  // Payment status indicator
+  // Payment status indicator - compact version
   const getStatusIndicator = () => {
     switch (paymentStatus) {
       case 'success':
         return (
-          <div className="flex items-center gap-2 text-green-600 mb-4">
-            <CheckCircle className="h-5 w-5" />
-            <span className="font-medium">Payment Confirmed</span>
+          <div className="flex items-center justify-center gap-2 text-green-600 mb-3">
+            <CheckCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">Payment Confirmed</span>
           </div>
         );
       case 'failed':
         return (
-          <div className="flex items-center gap-2 text-red-600 mb-4">
-            <AlertCircle className="h-5 w-5" />
-            <span className="font-medium">Payment Failed</span>
+          <div className="flex items-center justify-center gap-2 text-red-600 mb-3">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">Payment Failed</span>
           </div>
         );
       default:
         return (
-          <div className="flex items-center gap-2 text-blue-600 mb-4">
-            <Loader2 className="h-5 w-4 animate-spin" />
-            <span className="font-medium">Waiting for Payment...</span>
+          <div className="flex items-center justify-center gap-2 text-blue-600 mb-3">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm font-medium">Waiting for Payment</span>
           </div>
         );
     }
   };
 
-  // Confirmation method selector
+  // Compact confirmation method selector for mobile
   const getConfirmationMethodSelector = () => {
+    if (isMobile) {
+      return (
+        <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+          <div className="text-xs font-medium mb-1 text-center">Confirm via:</div>
+          <div className="flex justify-center gap-1">
+            <Button
+              variant={confirmationMethod === 'manual' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setConfirmationMethod('manual')}
+              className="text-xs px-2 py-1 h-7"
+            >
+              Manual
+            </Button>
+            <Button
+              variant={confirmationMethod === 'sms' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setConfirmationMethod('sms')}
+              className="text-xs px-2 py-1 h-7"
+            >
+              SMS
+            </Button>
+            <Button
+              variant={confirmationMethod === 'notification' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setConfirmationMethod('notification')}
+              className="text-xs px-2 py-1 h-7"
+            >
+              App
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="mb-4 p-3 bg-gray-50 rounded-lg">
         <div className="text-sm font-medium mb-2">Payment Confirmation Method:</div>
@@ -191,43 +227,34 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
     );
   };
 
-  // Confirmation instructions
+  // Compact confirmation instructions
   const getConfirmationInstructions = () => {
-    switch (confirmationMethod) {
-      case 'sms':
-        return (
-          <div className="text-xs text-blue-600 mt-2">
-            💡 Check your phone for SMS from bank when payment received
-          </div>
-        );
-      case 'notification':
-        return (
-          <div className="text-xs text-blue-600 mt-2">
-            💡 Check your UPI app for payment notification
-          </div>
-        );
-      default:
-        return (
-          <div className="text-xs text-blue-600 mt-2">
-            💡 Click "Payment Confirmed" when you receive money
-          </div>
-        );
-    }
+    const instruction = confirmationMethod === 'sms' 
+      ? '💡 Check SMS from bank when payment received'
+      : confirmationMethod === 'notification'
+      ? '💡 Check UPI app for payment notification'
+      : '💡 Click "Payment Confirmed" when you receive money';
+      
+    return (
+      <div className="text-xs text-blue-600 text-center mt-1">
+        {instruction}
+      </div>
+    );
   };
   
-  // Error state fallback UI
+  // Error state fallback UI - compact version
   if (errorState) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">UPI Payment</CardTitle>
+      <Card className={isMobile ? "max-w-sm mx-auto" : ""}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-center text-lg">UPI Payment</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col items-center gap-4">
-          <div className="text-center text-red-500">
-            There was an error loading UPI payment information.
+        <CardContent className="flex flex-col items-center gap-3 px-4">
+          <div className="text-center text-red-500 text-sm">
+            Error loading UPI payment information.
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold mb-1">
+            <div className="text-xl font-bold mb-1">
               {new Intl.NumberFormat('en-IN', {
                 style: 'currency',
                 currency: 'INR',
@@ -235,16 +262,17 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex justify-center px-4 pb-4">
           <Button 
             onClick={handleCheckPayment}
             disabled={checking}
             className="w-full"
+            size={isMobile ? "sm" : "default"}
           >
             {checking ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Verifying Payment...
+                Verifying...
               </>
             ) : (
               "I've Completed the Payment"
@@ -256,60 +284,90 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
   }
   
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center">UPI Payment</CardTitle>
+    <Card className={isMobile ? "max-w-xs mx-auto p-2" : "max-w-sm mx-auto p-4"}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-center text-base">UPI Payment</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col items-center gap-4">
+      <CardContent className="flex flex-col items-center gap-2 px-2">
         {getStatusIndicator()}
-        
-        {getConfirmationMethodSelector()}
-        
-        <div className="bg-white p-4 rounded-lg shadow-sm">
+        {/* Compact confirmation method selector: icon row */}
+        <div className="flex justify-center gap-1 mb-1">
+          <Button
+            variant={confirmationMethod === 'manual' ? 'default' : 'outline'}
+            size="icon"
+            onClick={() => setConfirmationMethod('manual')}
+            className="h-7 w-7 p-0"
+            title="Manual"
+          >
+            <CheckCircle className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={confirmationMethod === 'sms' ? 'default' : 'outline'}
+            size="icon"
+            onClick={() => setConfirmationMethod('sms')}
+            className="h-7 w-7 p-0"
+            title="SMS"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={confirmationMethod === 'notification' ? 'default' : 'outline'}
+            size="icon"
+            onClick={() => setConfirmationMethod('notification')}
+            className="h-7 w-7 p-0"
+            title="App Notification"
+          >
+            <Smartphone className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="bg-white p-2 rounded-lg shadow-sm">
           {upiLink ? (
             <QRCodeSVG
               value={upiLink}
-              size={200}
+              size={isMobile ? 120 : 180}
               bgColor={"#ffffff"}
               fgColor={"#000000"}
               level={"L"}
               includeMargin={false}
             />
           ) : (
-            <div className="h-[200px] w-[200px] flex items-center justify-center bg-gray-100">
+            <div className={`${isMobile ? 'h-[120px] w-[120px]' : 'h-[180px] w-[180px]'} flex items-center justify-center bg-gray-100 text-xs`}>
               QR Code not available
             </div>
           )}
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold mb-1">
+        <div className="text-center mt-1">
+          <div className="text-lg font-bold mb-0.5">
             {new Intl.NumberFormat('en-IN', {
               style: 'currency',
               currency: 'INR',
             }).format(safeAmount)}
           </div>
-          <p className="text-sm text-muted-foreground mb-2">
-            Scan with any UPI app to pay
+          <p className="text-xs text-muted-foreground mb-0.5">
+            Scan with any UPI app
           </p>
           <div className="text-xs text-muted-foreground">
-            UPI ID: {safeUpiId}
+            UPI: {safeUpiId}
           </div>
           <div className="text-xs text-muted-foreground">
-            Reference: {safeReference}
+            Ref: {safeReference}
           </div>
-          {getConfirmationInstructions()}
+          <div className="text-[11px] text-blue-600 mt-0.5">
+            {getConfirmationInstructions()}
+          </div>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-center">
+      <CardFooter className="flex justify-center px-2 pb-2">
         <Button 
           onClick={handleCheckPayment}
           disabled={checking || paymentStatus === 'success'}
-          className="w-full"
+          className="w-full text-xs h-8"
+          size={isMobile ? "sm" : "default"}
         >
           {checking ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Verifying Payment...
+              Verifying...
             </>
           ) : paymentStatus === 'success' ? (
             <>
@@ -317,7 +375,7 @@ export const UpiQRCode: React.FC<UpiQRCodeProps> = ({
               Payment Confirmed
             </>
           ) : (
-            "I've Completed the Payment"
+            "I've Paid"
           )}
         </Button>
       </CardFooter>

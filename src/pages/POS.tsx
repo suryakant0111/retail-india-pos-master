@@ -25,62 +25,18 @@ import { Input } from '@/components/ui/input';
 import { NewCustomerDialog } from '@/components/pos/NewCustomerDialog';
 import { UnitSelector } from '@/components/pos/UnitSelector';
 import { convertUnit } from '@/lib/utils';
-
-const ExcelCartQuantityInput = ({
-  value,
-  unitType,
-  convertedUnitLabel,
-  index,
-  updateQuantity,
-  updateQuantityWithUnit,
-  toast
-}: {
-  value: number,
-  unitType?: string,
-  convertedUnitLabel?: string,
-  index: number,
-  updateQuantity: (index: number, qty: number) => void,
-  updateQuantityWithUnit: (index: number, qty: number, unitLabel: string) => void,
-  toast: any
-}) => {
-  const [inputValue, setInputValue] = React.useState(value.toString());
-  React.useEffect(() => {
-    setInputValue(value.toString());
-  }, [value]);
-  const handleCommit = () => {
-    let newQty = parseFloat(inputValue);
-    if (isNaN(newQty) || newQty <= 0) {
-      newQty = (unitType === 'weight' || unitType === 'volume') ? 0.01 : 1;
-      setInputValue(newQty.toString());
-      toast({
-        title: 'Invalid Quantity',
-        description: 'Quantity must be at least 1',
-        variant: 'destructive',
-      });
-    }
-    if (convertedUnitLabel) {
-      updateQuantityWithUnit(index, newQty, convertedUnitLabel);
-    } else {
-      updateQuantity(index, newQty);
-    }
-  };
-  return (
-    <Input
-      type="number"
-      value={inputValue}
-      onChange={e => setInputValue(e.target.value)}
-      onBlur={handleCommit}
-      onKeyDown={e => {
-        if (e.key === 'Enter') handleCommit();
-      }}
-      className="w-20 border-0 p-0 bg-transparent"
-      min="0"
-      step={unitType === 'weight' || unitType === 'volume' ? "0.001" : "1"}
-    />
-  );
-};
+import { usePOSData } from '@/hooks/usePOSData';
+import { ExcelCart } from '@/components/pos/ExcelCart';
+import { CartSidebar } from '@/components/pos/CartSidebar';
+import { addOfflineSale, getOfflineSales, removeOfflineSale, OfflineSale, addOfflineCustomer, getOfflineCustomers, removeOfflineCustomer, OfflineCustomer, addOfflineProductUpdate, getOfflineProductUpdates, removeOfflineProductUpdate, OfflineProductUpdate, addOfflineBill, getOfflineBills, removeOfflineBill, OfflineBill, addOfflinePayment, getOfflinePayments, removeOfflinePayment, OfflinePayment } from '@/lib/offlineDB';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { getOfflineConflicts, clearOfflineConflicts } from '@/lib/offlineDB';
+import { useStockBatches } from '@/contexts/StockBatchContext';
 
 const POS = () => {
+  const pos = usePOSData();
+  const { discountValue, discountType } = useCart();
+  const { updateBatchId } = useCart();
   const { 
     items, 
     subtotal, 
@@ -88,8 +44,6 @@ const POS = () => {
     total, 
     customer,
     clearCart,
-    discountValue,
-    discountType,
     addItem,
     setTaxRate,
     removeItem,
@@ -97,183 +51,55 @@ const POS = () => {
     updateQuantityWithUnit,
     updatePrice,
     setCustomer,
-    taxRate
-  } = useCart();
-  
-  const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [category, setCategory] = useState('all');
-  const [activeTab, setActiveTab] = useState('products');
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi' | 'card'>('cash');
-  const [showReceiptDialog, setShowReceiptDialog] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [invoiceReference, setInvoiceReference] = useState('');
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [businessSettings, setBusinessSettings] = useState<any>({});
-  const [paymentSettings, setPaymentSettings] = useState<any>({});
-  const [posMode, setPosMode] = useState<'retail' | 'kirana'>('retail');
-  const { profile } = useProfile();
-  // Remove paymentStatus and showStatusDialog state
-  const [recentSalesProducts, setRecentSalesProducts] = useState<Product[]>([]);
-  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
-  const [cartType, setCartType] = useState<'pos' | 'excel'>('pos');
-  const [newCustomerDialog, setNewCustomerDialog] = useState(false);
-  const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({});
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
-  
-  const fetchProducts = async () => {
-    console.log('fetchProducts called with shop_id:', profile?.shop_id);
-    if (!profile?.shop_id) {
-      console.log('fetchProducts: No shop_id, returning early');
-      return;
-    }
-    const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
-    console.log('fetchProducts: Supabase response - data:', data, 'error:', error);
-    if (error) {
-      console.error('Error fetching products:', error);
-    } else if (data) {
-      console.log('fetchProducts: Setting products:', data);
-      setProducts(data);
-    } else {
-      console.log('fetchProducts: No data returned from Supabase');
-    }
-  };
-
-  // Fetch recent sales (latest 10 invoices)
-  const fetchRecentSales = async () => {
-    console.log('fetchRecentSales called with shop_id:', profile?.shop_id);
-    if (!profile?.shop_id) return;
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('items')
-      .eq('shop_id', profile.shop_id)
-      .order('createdAt', { ascending: false })
-      .limit(10);
-    if (error) {
-      console.error('Error fetching recent sales invoices:', error);
-      return;
-    }
-    console.log('Fetched recent invoices:', data);
-    if (data) {
-      // Flatten all products from invoice items, robustly
-      const products = data.flatMap(inv =>
-        Array.isArray(inv.items)
-          ? inv.items.map((item: any) => item && item.product ? item.product : null).filter(Boolean)
-          : []
-      );
-      // Remove duplicates by product id
-      const uniqueProducts = Array.from(new Map(products.map(p => [p.id, p])).values());
-      console.log('Extracted recent sale products:', uniqueProducts);
-      setRecentSalesProducts(uniqueProducts);
-    }
-  };
-
-  // Fetch recent invoices (latest 10)
-  const fetchRecentInvoices = async () => {
-    console.log('fetchRecentInvoices called with shop_id:', profile?.shop_id);
-    if (!profile?.shop_id) return;
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('shop_id', profile.shop_id)
-      .order('createdAt', { ascending: false })
-      .limit(10);
-    if (error) {
-      console.error('Error fetching recent invoices:', error);
-      return;
-    }
-    console.log('Fetched recent invoices:', data);
-    setRecentInvoices(data || []);
-  };
-
-  useEffect(() => {
-    console.log('POS profile:', profile);
-    console.log('POS shop_id:', profile?.shop_id);
-    if (profile?.shop_id) {
-    fetchProducts();
-      fetchRecentInvoices();
-    async function fetchCustomers() {
-      const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
-      if (error) {
-        console.error('Error fetching customers:', error);
-      } else if (data) {
-        setCustomers(data);
-        console.log(`Fetched customers for shop_id ${profile.shop_id}:`, data);
-      }
-    }
-    async function fetchSettings() {
-      // Assume shop_settings table: shop_id, business_settings, payment_settings, pos_mode
-      const { data, error } = await supabase.from('shop_settings').select('*').eq('shop_id', profile.shop_id).single();
-      if (!error && data) {
-        setBusinessSettings(data.business_settings || {});
-        setPaymentSettings(data.payment_settings || {});
-        setPosMode(data.pos_mode || 'retail');
-      } else {
-        setBusinessSettings({});
-        setPaymentSettings({});
-        setPosMode('retail');
-      }
-    }
-    fetchCustomers();
-    fetchSettings();
-    console.log('POS profile.shop_id:', profile?.shop_id);
-    }
-  }, [profile?.shop_id]);
-
-  useEffect(() => {
-    console.log('POS products:', products);
-    console.log('POS products with barcodes:', products.filter(p => p.barcode).map(p => ({ name: p.name, barcode: p.barcode })));
-    (window as any).products = products;
-  }, [products]);
-  
-  const refreshCustomers = async () => {
-    if (!profile?.shop_id) return;
-    const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
-    if (!error && data) setCustomers(data);
-  };
-
-  const handleAddNewCustomer = async () => {
-    if (!profile?.shop_id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('customers')
-        .insert([{
-          ...newCustomer,
-          shop_id: profile.shop_id,
-          created_at: new Date().toISOString(),
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Customer added successfully",
-      });
-
-      setNewCustomer({});
-      setNewCustomerDialog(false);
-      await refreshCustomers();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to add customer",
-        variant: "destructive",
-      });
-    }
-  };
+    taxRate,
+    toast,
+    searchTerm,
+    setSearchTerm,
+    category,
+    setCategory,
+    activeTab,
+    setActiveTab,
+    showPaymentDialog,
+    setShowPaymentDialog,
+    paymentMethod,
+    setPaymentMethod,
+    showReceiptDialog,
+    setShowReceiptDialog,
+    paymentSuccess,
+    setPaymentSuccess,
+    isPrintingReceipt,
+    setIsPrintingReceipt,
+    products,
+    setProducts,
+    invoiceReference,
+    setInvoiceReference,
+    customers,
+    setCustomers,
+    businessSettings,
+    setBusinessSettings,
+    paymentSettings,
+    setPaymentSettings,
+    posMode,
+    setPosMode,
+    profile,
+    recentSalesProducts,
+    setRecentSalesProducts,
+    recentInvoices,
+    setRecentInvoices,
+    cartType,
+    setCartType,
+    newCustomerDialog,
+    setNewCustomerDialog,
+    newCustomer,
+    setNewCustomer,
+    paymentStatus,
+    setPaymentStatus,
+    fetchProducts,
+    fetchRecentSales,
+    fetchRecentInvoices,
+    refreshCustomers,
+    handleAddNewCustomer
+  } = pos;
   
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(cat => cat && cat.trim() !== '')))];
   
@@ -333,11 +159,8 @@ const POS = () => {
     }
     setPaymentStatus(status);
     setPaymentSuccess(true);
-    if (paymentMethod === 'cash') {
-      setShowReceiptDialog(true);
-    } else {
-      finalizeTransaction(status);
-    }
+    setShowReceiptDialog(true); // Always show the receipt dialog for all payment methods
+    // Optionally, you can call finalizeTransaction(status) after printing/closing the dialog
   };
   
   const finalizeTransaction = async (status: 'paid' | 'pending' = 'paid') => {
@@ -396,16 +219,33 @@ const POS = () => {
       }
       const safeBusinessSettings = safeClone(businessSettings);
       const safePaymentSettings = safeClone(paymentSettings);
+      // Calculate correct total for invoice
+      let discountAmount = 0;
+      if (discountType === 'percentage') {
+        discountAmount = subtotal * (discountValue / 100);
+      } else {
+        discountAmount = discountValue;
+      }
+      const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+      let cgstAmount = 0;
+      let sgstAmount = 0;
+      if (taxRate > 0 && discountedSubtotal > 0) {
+        const cgstRate = taxRate / 2;
+        const sgstRate = taxRate / 2;
+        cgstAmount = discountedSubtotal * (cgstRate / 100);
+        sgstAmount = discountedSubtotal * (sgstRate / 100);
+      }
+      const totalValue = discountedSubtotal + cgstAmount + sgstAmount;
       const newInvoice = {
         id: Date.now().toString(),
         invoiceNumber: invoiceReference,
         items: sanitizedItems,
         customer: sanitizedCustomer,
         subtotal: subtotal,
-        taxTotal: taxTotal,
+        taxTotal: cgstAmount + sgstAmount,
         discountValue: discountValue,
         discountType: discountType,
-        total: total,
+        total: totalValue,
         paymentMethod: paymentMethod,
         paymentStatus: status,
         createdBy: 'admin',
@@ -429,183 +269,306 @@ const POS = () => {
         });
         return;
       }
-      // Insert invoice into Supabase
-      const { error: invoiceInsertError } = await supabase.from('invoices').insert([newInvoice]);
-      if (invoiceInsertError) {
-        console.error('Error inserting invoice:', invoiceInsertError, newInvoice);
+      const isOffline = !window.navigator.onLine;
+      if (isOffline) {
+        // Save to Dexie instead of Supabase
+        await addOfflineSale({ id: newInvoice.id, data: newInvoice, createdAt: Date.parse(newInvoice.createdAt) });
+        // Queue bill
+        const billNumber = `MJ/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000000)}`;
+        const businessDetails = {
+          shopName: businessSettings?.name || '',
+          addressLines: [businessSettings?.address || ''].filter(Boolean),
+          phone: businessSettings?.phone || '',
+          gstin: businessSettings?.gstNumber || '',
+          state: businessSettings?.state || '',
+        };
+        const billItems = items.map(item => ({
+          name: item.product?.name || item.name,
+          quantity: item.quantity,
+          unitLabel: item.unitLabel || item.product?.unitLabel || '',
+          price: item.price,
+          totalPrice: item.price * item.quantity,
+          taxRate, // from useCart()
+          taxAmount: (item.price * item.quantity) * (taxRate / 100),
+        }));
+        let discountedSubtotal = subtotal;
+        if (discountType === 'percentage') {
+          discountedSubtotal = subtotal * (1 - (discountValue / 100));
+        } else {
+          discountedSubtotal = subtotal - discountValue;
+        }
+        discountedSubtotal = Math.max(0, discountedSubtotal);
+        const taxes = [];
+        let cgstAmount = 0;
+        let sgstAmount = 0;
+        if (taxRate > 0 && discountedSubtotal > 0) {
+          const cgstRate = taxRate / 2;
+          const sgstRate = taxRate / 2;
+          cgstAmount = discountedSubtotal * (cgstRate / 100);
+          sgstAmount = discountedSubtotal * (sgstRate / 100);
+          taxes.push(
+            {
+              name: `CGST@${cgstRate.toFixed(2)}%`,
+              rate: cgstRate,
+              taxable: discountedSubtotal,
+              amount: cgstAmount,
+            },
+            {
+              name: `SGST@${sgstRate.toFixed(2)}%`,
+              rate: sgstRate,
+              taxable: discountedSubtotal,
+              amount: sgstAmount,
+            }
+          );
+        }
+        const totalValue = discountedSubtotal + cgstAmount + sgstAmount;
+        const billObj = {
+          bill_number: billNumber,
+          shop_id: profile?.shop_id,
+          items: billItems,
+          customer: customer ? {
+            name: customer.name,
+            phone: customer.phone,
+            gstin: customer.gstin || 'Unregistered',
+          } : { name: 'Walk-in Customer', phone: '-', gstin: 'Unregistered' },
+          subtotal: subtotal,
+          discount: discountValue,
+          taxable_amount: discountedSubtotal,
+          taxes: taxes,
+          total: totalValue,
+          payment_method: paymentMethod,
+          cash_received: totalValue,
+          change: 0,
+          created_by: profile?.id,
+          cashier: profile?.name || '',
+          business_details: businessDetails,
+          payment_details: safePaymentSettings,
+          createdAt: newInvoice.createdAt,
+        };
+        await addOfflineBill({ id: billNumber, data: billObj, createdAt: Date.parse(newInvoice.createdAt) });
+        // Queue payment
+        const newPayment = {
+          order_id: newInvoice.id,
+          amount: totalValue,
+          method: paymentMethod,
+          status: status,
+          created_at: newInvoice.createdAt,
+          shop_id: profile?.shop_id || null,
+        };
+        await addOfflinePayment({ id: `${newInvoice.id}-payment`, data: newPayment, createdAt: Date.parse(newInvoice.createdAt) });
+        // Queue product stock updates
+        for (const item of items) {
+          const productId = item.product.id;
+          const soldQty = item.quantity;
+          const currentStock = item.product.stock;
+          const newStock = Math.max(0, currentStock - soldQty);
+          await addOfflineProductUpdate({
+            id: `${productId}-${Date.now()}`,
+            data: { id: productId, update: { stock: newStock } },
+            createdAt: Date.parse(newInvoice.createdAt),
+          });
+        }
         toast({
-          title: 'Invoice Error',
-          description: `Error: ${invoiceInsertError.message}\nData: ${JSON.stringify(newInvoice, null, 2)}`,
-          variant: 'destructive',
+          title: 'Offline Sale Saved',
+          description: 'Sale, bill, payment, and inventory updates saved locally. They will sync when online.',
+          variant: 'default',
         });
       } else {
-        toast({
-          title: 'Invoice Saved',
-          description: `Invoice #${newInvoice.invoiceNumber} saved with status: ${status}`,
-          variant: 'success',
-        });
-        // --- Insert Bill into Supabase ---
-        try {
-          // Always fetch the latest shop details from DB before inserting the bill
-          let shopDetails = null;
-          if (profile?.shop_id) {
-            const { data: shopData, error: shopError } = await supabase
-              .from('shops')
-              .select('name, address, phone, gstin, state')
-              .eq('id', profile.shop_id)
-              .single();
-            if (shopData) {
-              shopDetails = {
-                businessName: shopData.name,
-                address: shopData.address,
-                phone: shopData.phone,
-                gstNumber: shopData.gstin,
-                state: shopData.state,
-              };
-            }
-          }
-          const billNumber = `MJ/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000000)}`;
-          const businessDetails = {
-            shopName: shopDetails?.businessName || '',
-            addressLines: [shopDetails?.address || ''].filter(Boolean),
-            phone: shopDetails?.phone || '',
-            gstin: shopDetails?.gstNumber || '',
-            state: shopDetails?.state || '',
-          };
-          // Bill items use global taxRate from useCart()
-          const billItems = items.map(item => ({
-            name: item.product?.name || item.name,
-            quantity: item.quantity,
-            unitLabel: item.unitLabel || item.product?.unitLabel || '',
-            price: item.price,
-            totalPrice: item.price * item.quantity,
-            taxRate, // from useCart()
-            taxAmount: (item.price * item.quantity) * (taxRate / 100),
-          }));
-
-          // Calculate discounted subtotal
-          let discountedSubtotal = subtotal;
-          if (discountType === 'percentage') {
-            discountedSubtotal = subtotal * (1 - (discountValue / 100));
-          } else {
-            discountedSubtotal = subtotal - discountValue;
-          }
-          discountedSubtotal = Math.max(0, discountedSubtotal);
-
-          // Build taxes array (CGST/SGST split)
-          const taxes = [];
-          if (taxTotal > 0) {
-            const cgstRate = taxRate / 2;
-            const sgstRate = taxRate / 2;
-            const cgstAmount = taxTotal / 2;
-            const sgstAmount = taxTotal / 2;
-            taxes.push(
-              {
-                name: `CGST@${cgstRate.toFixed(2)}%`,
-                rate: cgstRate,
-                taxable: discountedSubtotal,
-                amount: cgstAmount,
-              },
-              {
-                name: `SGST@${sgstRate.toFixed(2)}%`,
-                rate: sgstRate,
-                taxable: discountedSubtotal,
-                amount: sgstAmount,
+        // Insert invoice into Supabase
+        const { error: invoiceInsertError } = await supabase.from('invoices').insert([newInvoice]);
+        if (invoiceInsertError) {
+          console.error('Error inserting invoice:', invoiceInsertError, newInvoice);
+          toast({
+            title: 'Invoice Error',
+            description: `Error: ${invoiceInsertError.message}\nData: ${JSON.stringify(newInvoice, null, 2)}`,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Invoice Saved',
+            description: `Invoice #${newInvoice.invoiceNumber} saved with status: ${status}`,
+            variant: 'success',
+          });
+          // --- Insert Bill into Supabase ---
+          try {
+            // Always fetch the latest shop details from DB before inserting the bill
+            let shopDetails = null;
+            if (profile?.shop_id) {
+              const { data: shopData, error: shopError } = await supabase
+                .from('shops')
+                .select('name, address, phone, gstin, state')
+                .eq('id', profile.shop_id)
+                .single();
+              if (shopData) {
+                shopDetails = {
+                  businessName: shopData.name,
+                  address: shopData.address,
+                  phone: shopData.phone,
+                  gstNumber: shopData.gstin,
+                  state: shopData.state,
+                };
               }
-            );
-          }
-          const { error: billInsertError } = await supabase.from('bills').insert([
-            {
-              bill_number: billNumber,
-              shop_id: profile?.shop_id,
-              items: billItems,
-              customer: customer ? {
-                name: customer.name,
-                phone: customer.phone,
-                gstin: customer.gstin || 'Unregistered',
-              } : { name: 'Walk-in Customer', phone: '-', gstin: 'Unregistered' },
-              subtotal: subtotal,
-              discount: discountValue,
-              taxable_amount: subtotal - discountValue,
-              taxes: taxes,
-              total: total,
-              payment_method: paymentMethod,
-              cash_received: total, // You can adjust this if you track cash received
-              change: 0, // You can adjust this if you track change
-              created_by: profile?.id,
-              cashier: profile?.name || '',
-              business_details: businessDetails,
-              payment_details: safePaymentSettings,
             }
-          ]);
-          if (billInsertError) {
-            console.error('Error inserting bill:', billInsertError);
+            const billNumber = `MJ/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000000)}`;
+            const businessDetails = {
+              shopName: shopDetails?.businessName || '',
+              addressLines: [shopDetails?.address || ''].filter(Boolean),
+              phone: shopDetails?.phone || '',
+              gstin: shopDetails?.gstNumber || '',
+              state: shopDetails?.state || '',
+            };
+            // Bill items use global taxRate from useCart()
+            const billItems = items.map(item => ({
+              name: item.product?.name || item.name,
+              quantity: item.quantity,
+              unitLabel: item.unitLabel || item.product?.unitLabel || '',
+              price: item.price,
+              totalPrice: item.price * item.quantity,
+              taxRate, // from useCart()
+              taxAmount: (item.price * item.quantity) * (taxRate / 100),
+            }));
+
+            // Calculate discounted subtotal
+            let discountedSubtotal = subtotal;
+            if (discountType === 'percentage') {
+              discountedSubtotal = subtotal * (1 - (discountValue / 100));
+            } else {
+              discountedSubtotal = subtotal - discountValue;
+            }
+            discountedSubtotal = Math.max(0, discountedSubtotal);
+
+            // Build taxes array (CGST/SGST split)
+            const taxes = [];
+            if (taxTotal > 0) {
+              const cgstRate = taxRate / 2;
+              const sgstRate = taxRate / 2;
+              const cgstAmount = taxTotal / 2;
+              const sgstAmount = taxTotal / 2;
+              taxes.push(
+                {
+                  name: `CGST@${cgstRate.toFixed(2)}%`,
+                  rate: cgstRate,
+                  taxable: discountedSubtotal,
+                  amount: cgstAmount,
+                },
+                {
+                  name: `SGST@${sgstRate.toFixed(2)}%`,
+                  rate: sgstRate,
+                  taxable: discountedSubtotal,
+                  amount: sgstAmount,
+                }
+              );
+            }
+            const { error: billInsertError } = await supabase.from('bills').insert([
+              {
+                bill_number: billNumber,
+                shop_id: profile?.shop_id,
+                items: billItems,
+                customer: customer ? {
+                  name: customer.name,
+                  phone: customer.phone,
+                  gstin: customer.gstin || 'Unregistered',
+                } : { name: 'Walk-in Customer', phone: '-', gstin: 'Unregistered' },
+                subtotal: subtotal,
+                discount: discountValue,
+                taxable_amount: discountedSubtotal,
+                taxes: taxes,
+                total: totalValue,
+                payment_method: paymentMethod,
+                cash_received: totalValue, // Always use correct total
+                change: 0, // You can adjust this if you track change
+                created_by: profile?.id,
+                cashier: profile?.name || '',
+                business_details: businessDetails,
+                payment_details: safePaymentSettings,
+              }
+            ]);
+            if (billInsertError) {
+              console.error('Error inserting bill:', billInsertError);
+              toast({
+                title: 'Bill Error',
+                description: `Error: ${billInsertError.message}`,
+                variant: 'destructive',
+              });
+            } else {
+              toast({
+                title: 'Bill Saved',
+                description: `Bill #${billNumber} saved successfully!`,
+                variant: 'success',
+              });
+            }
+          } catch (err) {
+            console.error('Error saving bill:', err);
+          }
+          // Insert payment into Supabase
+          const newPayment = {
+            order_id: newInvoice.id, // Use invoice id as order_id
+            amount: totalValue,
+            method: paymentMethod,
+            status: status,
+            created_at: new Date().toISOString(),
+            shop_id: profile?.shop_id || null,
+          };
+          const { error: paymentInsertError } = await supabase.from('payments').insert([newPayment]);
+          if (paymentInsertError) {
+            console.error('Error inserting payment:', paymentInsertError, newPayment);
             toast({
-              title: 'Bill Error',
-              description: `Error: ${billInsertError.message}`,
+              title: 'Payment Error',
+              description: `Error: ${paymentInsertError.message}\nData: ${JSON.stringify(newPayment, null, 2)}`,
               variant: 'destructive',
             });
           } else {
             toast({
-              title: 'Bill Saved',
-              description: `Bill #${billNumber} saved successfully!`,
+              title: 'Payment Saved',
+              description: `Payment for Invoice #${newInvoice.invoiceNumber} saved with status: ${status}`,
               variant: 'success',
             });
           }
-        } catch (err) {
-          console.error('Error saving bill:', err);
+          // Update customer's totalPurchases and loyaltyPoints in Supabase
+          if (customer && customer.id) {
+            await supabase
+              .from('customers')
+              .update({
+                totalPurchases: (customer.totalPurchases || 0) + total,
+                loyaltyPoints: (customer.loyaltyPoints || 0) + Math.floor(total / 100),
+                updatedAt: new Date().toISOString(),
+              })
+              .eq('id', customer.id);
+          }
+          // Update product stock in Supabase
+          for (const item of items) {
+            const productId = item.product.id;
+            const soldQty = item.quantity;
+            const currentStock = item.product.stock;
+            const newStock = Math.max(0, currentStock - soldQty);
+            await supabase.from('products').update({ stock: newStock }).eq('id', productId);
+          }
+          // After updating product stock in Supabase, insert 'out' adjustment for each sold batch
+          for (const item of items) {
+            if (item.batchId) {
+              await supabase.from('stock_adjustments').insert([
+                {
+                  product_id: item.product.id,
+                  quantity: item.quantity,
+                  type: 'out',
+                  note: 'Sale',
+                  user_id: profile?.id,
+                  shop_id: profile?.shop_id,
+                  batch_id: Number(item.batchId), // Ensure batch_id is a bigint (number)
+                  created_at: new Date().toISOString(),
+                }
+              ]);
+            }
+          }
+          await fetchProducts();
+          toast({
+            title: 'Payment Successful',
+            description: `Transaction of ₹${totalValue.toFixed(2)} completed via ${paymentMethod.toUpperCase()} (${status.toUpperCase()})`,
+            variant: 'success',
+          });
+          window.dispatchEvent(new Event('transactionAdded'));
         }
       }
-      // Insert payment into Supabase
-      const newPayment = {
-        order_id: newInvoice.id, // Use invoice id as order_id
-        amount: total,
-        method: paymentMethod,
-        status: status,
-        created_at: new Date().toISOString(),
-        shop_id: profile?.shop_id || null,
-      };
-      const { error: paymentInsertError } = await supabase.from('payments').insert([newPayment]);
-      if (paymentInsertError) {
-        console.error('Error inserting payment:', paymentInsertError, newPayment);
-        toast({
-          title: 'Payment Error',
-          description: `Error: ${paymentInsertError.message}\nData: ${JSON.stringify(newPayment, null, 2)}`,
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Payment Saved',
-          description: `Payment for Invoice #${newInvoice.invoiceNumber} saved with status: ${status}`,
-          variant: 'success',
-        });
-      }
-      // Update customer's totalPurchases and loyaltyPoints in Supabase
-      if (customer && customer.id) {
-        await supabase
-          .from('customers')
-          .update({
-            totalPurchases: (customer.totalPurchases || 0) + total,
-            loyaltyPoints: (customer.loyaltyPoints || 0) + Math.floor(total / 100),
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', customer.id);
-      }
-      // Update product stock in Supabase
-      for (const item of items) {
-        const productId = item.product.id;
-        const soldQty = item.quantity;
-        const currentStock = item.product.stock;
-        const newStock = Math.max(0, currentStock - soldQty);
-        await supabase.from('products').update({ stock: newStock }).eq('id', productId);
-      }
-      await fetchProducts();
-      toast({
-        title: 'Payment Successful',
-        description: `Transaction of ₹${total.toFixed(2)} completed via ${paymentMethod.toUpperCase()} (${status.toUpperCase()})`,
-        variant: 'success',
-      });
-      window.dispatchEvent(new Event('transactionAdded'));
     } catch (error) {
       console.error('Error saving invoice:', error);
     }
@@ -627,7 +590,6 @@ const POS = () => {
   const openPaymentDialog = (method: 'cash' | 'upi' | 'card') => {
     setPaymentMethod(method);
     setShowPaymentDialog(true);
-    
     generateReference();
   };
   
@@ -647,406 +609,317 @@ const POS = () => {
     }, 1500);
   };
   
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
-  const [cartOpen, setCartOpen] = useState(false);
+  // Prepare safePaymentSettings for the hook
+  function safeClone(obj: any) {
+    try {
+      return obj ? JSON.parse(JSON.stringify(obj)) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const safePaymentSettings = safeClone(paymentSettings);
+
+  // Use the offline sync hook
+  const { isOffline, isSyncing, syncOfflineData } = useOfflineSync({
+    toast,
+    supabase,
+    profile,
+    businessSettings,
+    safePaymentSettings,
+  });
+
+  // Manual toggle for testing (optional, can be removed if not needed)
+  // const toggleOffline = () => setIsOffline((prev) => !prev);
   
+  const [conflicts, setConflicts] = useState([]);
+  const [showConflicts, setShowConflicts] = useState(false);
+
+  // Function to load conflicts
+  const loadConflicts = async () => {
+    const data = await getOfflineConflicts();
+    setConflicts(data);
+    setShowConflicts(true);
+  };
+  // Function to clear conflicts
+  const handleClearConflicts = async () => {
+    await clearOfflineConflicts();
+    setConflicts([]);
+    setShowConflicts(false);
+    toast({ title: 'Conflicts Cleared', description: 'All conflict logs have been cleared.', variant: 'success' });
+  };
+
+  const { stockBatches, setStockBatches } = useStockBatches();
+
+  const [selectedBatchIds, setSelectedBatchIds] = useState<Record<string, string>>({});
+
+  // Helper to update selected batch for a product
+  const handleBatchSelect = (productId: string, batchId: string) => {
+    setSelectedBatchIds(prev => ({ ...prev, [productId]: batchId }));
+  };
+
+  // Update handleBatchConfirm to update cart items' batchId
+  // const updateBatchId = (index: number, batchId: string) => {
+  //   setItems(prevItems => {
+  //     const newItems = [...prevItems];
+  //     newItems[index] = { ...newItems[index], batchId };
+  //     return newItems;
+  //   });
+  // };
+
   return (
-    <div className="flex flex-col lg:flex-row h-full min-h-screen relative">
-      <div className="p-2 sm:p-4 overflow-auto flex-1 min-w-0">
-        {/* Mobile: ProductSearch, QuickProductBar, CartTypeToggle, ProductGrid, DailySalesSummary (in this order) */}
-        <div className="block lg:hidden">
-          <QuickProductBar
-            products={products}
-            onSelectProduct={handleQuickAddProduct}
-          />
-          <div className="mb-2 flex items-center justify-between bg-gray-50 p-2 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="cart-type"
-                checked={cartType === 'excel'}
-                onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
-              />
-              <Label htmlFor="cart-type">
-                {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
-              </Label>
-            </div>
-            <div className="text-xs text-gray-600">
-              {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
-            </div>
-          </div>
-          <ProductGrid
-            filteredProducts={filteredProducts}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            recentInvoices={recentInvoices}
-          />
-          <div className="mt-2">
-            <ProductSearch 
-              products={products}
-              onSearch={setSearchTerm}
-              searchTerm={searchTerm}
-              category={category}
-              onCategoryChange={setCategory}
-              categories={categories}
-            />
-          </div>
-          <div className="mt-2">
-            <DailySalesSummary />
-          </div>
+    <>
+      {/* Offline Mode Banner */}
+      {isOffline && (
+        <div className="w-full bg-yellow-400 text-black text-center py-2 font-semibold z-50">
+          Offline Mode: Sales will be saved locally and synced when online.
         </div>
-        {/* Desktop: original order and spacing */}
-        <div className="hidden lg:block">
-          <DailySalesSummary />
-          <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="cart-type"
-                checked={cartType === 'excel'}
-                onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
-              />
-              <Label htmlFor="cart-type">
-                {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
-              </Label>
-            </div>
-            <div className="text-sm text-gray-600">
-              {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
-            </div>
-          </div>
-          <div className="mb-4 flex items-center gap-2">
-            <ProductSearch 
-              products={products}
-              onSearch={setSearchTerm}
-              searchTerm={searchTerm}
-              category={category}
-              onCategoryChange={setCategory}
-              categories={categories}
-            />
-            <MobileScannerQR
-              products={products}
-              onProductFound={handleQuickAddProduct}
-            />
-          </div>
-          <QuickProductBar
-            products={products}
-            onSelectProduct={handleQuickAddProduct}
-          />
-          <ProductGrid
-            filteredProducts={filteredProducts}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            recentInvoices={recentInvoices}
-          />
+      )}
+      {isSyncing && (
+        <div className="w-full bg-blue-200 text-blue-900 text-center py-2 font-semibold z-50">
+          Syncing offline data...
         </div>
-        {/* Excel Cart - Shows below products when active (unchanged) */}
-        {cartType === 'excel' && (
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg transition-all duration-300">
-            <div className="mb-4">
-              <h2 className="text-xl font-bold mb-2">Excel Cart</h2>
-              <p className="text-sm text-gray-600">Table-style cart layout</p>
-            </div>
-            
-            {/* Excel-style Cart Layout */}
-            <div className="space-y-4">
-              {/* Customer Selection */}
-              <div className="flex gap-2">
-                <Select 
-                  value={customer?.id || ''} 
-                  onValueChange={(value) => {
-                    if (value === 'walkin') {
-                      // Handle walk-in customer - set customer to null
-                      setCustomer(null);
-                    } else {
-                      const selectedCustomer = customers.find(c => c.id === value);
-                      if (selectedCustomer) {
-                        setCustomer(selectedCustomer);
-                      }
-                    }
-                  }}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="walkin">Walk-in Customer</SelectItem>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => setNewCustomerDialog(true)}
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  New Customer
-                </Button>
-              </div>
-              
-              {/* Cart Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Item</th>
-                      <th className="px-4 py-2 text-left">Qty</th>
-                      <th className="px-4 py-2 text-left">Price</th>
-                      <th className="px-4 py-2 text-left">Total</th>
-                      <th className="px-4 py-2 text-left">Actions</th>
+      )}
+      {/* Manual sync button for testing (optional) */}
+      {/* <div className="fixed top-16 right-4 z-50">
+        <button
+          onClick={syncOfflineData}
+          className="bg-gray-800 text-white px-3 py-1 rounded shadow hover:bg-gray-700"
+        >
+          Sync Offline Data
+        </button>
+      </div> */}
+      {/* Conflict Review Button and Modal */}
+      <div className="fixed top-24 right-4 z-50">
+        <Button onClick={loadConflicts} variant="outline">
+          Review Conflicts
+        </Button>
+      </div>
+      {showConflicts && (
+        <Dialog open={showConflicts} onOpenChange={setShowConflicts}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Offline Sync Conflicts</DialogTitle>
+              <DialogDescription>
+                These are product stock conflicts detected during offline sync. Please review and resolve as needed.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-96 overflow-y-auto">
+              {conflicts.length === 0 ? (
+                <div className="text-center text-gray-500">No conflicts found.</div>
+              ) : (
+                <table className="w-full text-xs border">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="p-2 border">Product ID</th>
+                      <th className="p-2 border">Expected</th>
+                      <th className="p-2 border">Actual</th>
+                      <th className="p-2 border">Update</th>
+                      <th className="p-2 border">Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                          No items in cart
-                        </td>
+                    {conflicts.map((c) => (
+                      <tr key={c.id} className="border-b">
+                        <td className="p-2 border">{c.data?.productId}</td>
+                        <td className="p-2 border">{c.data?.expected}</td>
+                        <td className="p-2 border">{c.data?.actual}</td>
+                        <td className="p-2 border">{JSON.stringify(c.data?.update)}</td>
+                        <td className="p-2 border">{new Date(c.data?.timestamp).toLocaleString()}</td>
                       </tr>
-                    ) : (
-                      items.map((item, index) => (
-                        <tr key={index} className="border-t hover:bg-gray-50">
-                          <td className="px-4 py-2">
-                            <div>
-                              <div className="font-medium">{item.product.name && item.product.name !== "0" ? item.product.name : ""}</div>
-                              {(item.unitType === 'weight' || item.unitType === 'volume') && (
-                                <div className="text-xs text-gray-500">
-                                  {item.unitLabel} • Price per {item.unitLabel}: ₹{item.price.toFixed(2)}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-1">
-                              <ExcelCartQuantityInput
-                                value={item.convertedQuantity || item.quantity}
-                                unitType={item.unitType}
-                                convertedUnitLabel={item.convertedUnitLabel}
-                                index={index}
-                                updateQuantity={updateQuantity}
-                                updateQuantityWithUnit={updateQuantityWithUnit}
-                                toast={toast}
-                              />
-                              {/* Unit selector for weight/volume products */}
-                              {(item.unitType === 'weight' || item.unitType === 'volume') ? (
-                                <UnitSelector
-                                  value={item.convertedUnitLabel || item.unitLabel || 'kg'}
-                                  onChange={(newUnit) => {
-                                    // Get the current quantity being displayed
-                                    const currentDisplayQty = item.convertedQuantity || item.quantity;
-                                    const currentUnit = item.convertedUnitLabel || item.unitLabel || 'kg';
-                                    const originalUnit = item.originalUnitLabel || item.unitLabel || 'kg';
-                                    
-                                    console.log('Unit selector change:', {
-                                      currentDisplayQty,
-                                      currentUnit,
-                                      newUnit,
-                                      originalUnit,
-                                      convertedQty: convertUnit(currentDisplayQty, currentUnit, newUnit)
-                                    });
-                                    
-                                    // Convert current display quantity to new unit
-                                    const convertedQty = convertUnit(currentDisplayQty, currentUnit, newUnit);
-                                    
-                                    updateQuantityWithUnit(index, convertedQty, newUnit);
-                                  }}
-                                  unitType={item.unitType}
-                                  className="w-12"
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-500">{item.unitLabel || 'pcs'}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                value={item.price}
-                                onChange={(e) => {
-                                  const newPrice = parseFloat(e.target.value) || 0;
-                                  updatePrice(index, newPrice);
-                                }}
-                                className="w-24 border-0 p-0 bg-transparent"
-                                min="0"
-                                step="0.01"
-                              />
-                              <span className="text-xs text-gray-500">₹/{item.unitLabel || 'pcs'}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="font-medium">
-                              ₹{(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}
-                            </div>
-                            {(item.unitType === 'weight' || item.unitType === 'volume') && item.product.tareWeight && item.product.tareWeight > 0 && (
-                              <div className="text-xs text-gray-500">
-                                Net: {item.quantity - item.product.tareWeight} {item.unitLabel}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-2">
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              onClick={() => {
-                                removeItem(index);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
-              </div>
-              
-              {/* Summary */}
-              {items.length > 0 && (
-                <div className="space-y-4 bg-white p-4 rounded-lg border">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Subtotal</span>
-                      <span>₹{subtotal.toFixed(2)}</span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <span>Tax Rate (%)</span>
-                      <Input 
-                        type="number" 
-                        className="w-20" 
-                        value={taxRate}
-                        onChange={(e) => {
-                          const newTaxRate = parseFloat(e.target.value) || 0;
-                          setTaxRate(newTaxRate);
-                        }}
-                        min="0"
-                        max="100"
-                        step="0.01"
-                      />
-                      <span>%</span>
-                    </div>
-                    
-                    <div className="flex justify-between">
-                      <span>Tax</span>
-                      <span>₹{taxTotal.toFixed(2)}</span>
-                    </div>
-                    
-                    <div className="border-t pt-2">
-                      <div className="flex justify-between font-bold text-lg">
-                        <span>Total</span>
-                        <span>₹{total.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Button onClick={() => openPaymentDialog('cash')} className="w-full">
-                      Pay with Cash
-                    </Button>
-                    <Button onClick={() => openPaymentDialog('upi')} variant="outline" className="w-full">
-                      Pay with UPI
-                    </Button>
-                    <Button onClick={() => openPaymentDialog('card')} variant="outline" className="w-full">
-                      Pay with Card
-                    </Button>
-                  </div>
-                </div>
               )}
             </div>
+            <DialogFooter>
+              <Button variant="destructive" onClick={handleClearConflicts}>Clear All</Button>
+              <Button variant="outline" onClick={() => setShowConflicts(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {/* Top Bar Header */}
+      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-200 w-full">
+        <div className="flex items-center px-4 py-3">
+          <div className="flex items-center">
+            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-[#2954e0] text-white font-bold mr-2 text-lg">Z:</span>
+            <span className="text-[#2954e0] font-semibold text-xl px-4 py-2 bg-white rounded-xl">zapretail</span>
           </div>
-        )}
-      </div>
-      
-      {/* CartSection: always visible on desktop, slide-over on mobile */}
-      {cartType === 'pos' && (
-        <>
-          {/* Desktop: show CartSection as sidebar as before */}
-          <div className="hidden lg:block h-full">
-            <CartSection 
-              customers={customers}
-              openPaymentDialog={openPaymentDialog}
-              refreshCustomers={refreshCustomers}
+        </div>
+      </header>
+      {/* Main Content */}
+      <div className="flex flex-col lg:flex-row h-full min-h-screen relative">
+        <div className="p-2 sm:p-4 overflow-auto flex-1 min-w-0">
+          {/* Mobile: ProductSearch, QuickProductBar, CartTypeToggle, ProductGrid, DailySalesSummary (in this order) */}
+          <div className="block lg:hidden">
+            <QuickProductBar
+              products={products}
+              onSelectProduct={handleQuickAddProduct}
             />
-          </div>
-          {/* Mobile Floating Cart Button and Slide-Over */}
-          <button
-            className="lg:hidden fixed bottom-6 right-6 z-40 bg-indigo-600 text-white rounded-full shadow-lg p-4 flex items-center gap-2 focus:outline-none"
-            onClick={() => setCartOpen(true)}
-            aria-label="Open Cart"
-            style={{ display: cartOpen ? 'none' : 'flex' }}
-          >
-            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.35 2.7A2 2 0 008.48 19h7.04a2 2 0 001.83-1.3L17 13M7 13V6a1 1 0 011-1h5a1 1 0 011 1v7" /></svg>
-            <span className="font-bold">Cart</span>
-            {items.length > 0 && (
-              <span className="ml-2 bg-white text-indigo-600 rounded-full px-2 py-0.5 text-xs font-bold">{items.length}</span>
-            )}
-          </button>
-          {cartOpen && (
-            <div className="fixed inset-0 z-50 flex lg:hidden">
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
-              <div className="relative w-full max-w-md ml-auto h-full bg-white shadow-xl flex flex-col">
-                <div className="flex items-center justify-between p-4 border-b">
-                  <h2 className="text-xl font-semibold">Current Order</h2>
-                  <button onClick={() => setCartOpen(false)} className="text-gray-500 hover:text-gray-700 p-2 focus:outline-none">
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  <CartSection 
-                    customers={customers}
-                    openPaymentDialog={openPaymentDialog}
-                    refreshCustomers={refreshCustomers}
-                  />
-                </div>
+            <div className="mb-2 flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cart-type"
+                  checked={cartType === 'excel'}
+                  onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
+                />
+                <Label htmlFor="cart-type">
+                  {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
+                </Label>
+              </div>
+              <div className="text-xs text-gray-600">
+                {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
               </div>
             </div>
+            <ProductGrid
+              filteredProducts={filteredProducts}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              recentInvoices={recentInvoices}
+            />
+            <div className="mt-2">
+              <ProductSearch 
+                products={products}
+                onSearch={setSearchTerm}
+                searchTerm={searchTerm}
+                category={category}
+                onCategoryChange={setCategory}
+                categories={categories}
+              />
+            </div>
+          </div>
+          {/* Desktop: original order and spacing */}
+          <div className="hidden lg:block">
+            <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cart-type"
+                  checked={cartType === 'excel'}
+                  onCheckedChange={(checked) => setCartType(checked ? 'excel' : 'pos')}
+                />
+                <Label htmlFor="cart-type">
+                  {cartType === 'pos' ? 'POS Cart' : 'Excel Cart'}
+                </Label>
+              </div>
+              <div className="text-sm text-gray-600">
+                {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
+              </div>
+            </div>
+            <div className="mb-4 flex items-center gap-2">
+              <ProductSearch 
+                products={products}
+                onSearch={setSearchTerm}
+                searchTerm={searchTerm}
+                category={category}
+                onCategoryChange={setCategory}
+                categories={categories}
+              />
+              <MobileScannerQR
+                products={products}
+                onProductFound={handleQuickAddProduct}
+              />
+            </div>
+            <QuickProductBar
+              products={products}
+              onSelectProduct={handleQuickAddProduct}
+            />
+            <ProductGrid
+              filteredProducts={filteredProducts}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              recentInvoices={recentInvoices}
+              usePOSCard={true}
+            />
+          </div>
+          {/* Excel Cart - Shows below products when active (unchanged) */}
+          {cartType === 'excel' && (
+            <ExcelCart
+              items={items}
+              customers={customers}
+              customer={customer}
+              setCustomer={setCustomer}
+              newCustomerDialog={newCustomerDialog}
+              setNewCustomerDialog={setNewCustomerDialog}
+              newCustomer={newCustomer}
+              setNewCustomer={setNewCustomer}
+              handleAddNewCustomer={handleAddNewCustomer}
+              refreshCustomers={refreshCustomers}
+              updateQuantity={updateQuantity}
+              updateQuantityWithUnit={updateQuantityWithUnit}
+              updatePrice={updatePrice}
+              removeItem={removeItem}
+              toast={toast}
+              cartType={cartType}
+              subtotal={subtotal}
+              taxRate={taxRate}
+              setTaxRate={setTaxRate}
+              taxTotal={taxTotal}
+              discountValue={discountValue}
+              discountType={discountType}
+              total={total}
+              openPaymentDialog={openPaymentDialog}
+              products={products}
+              addItem={addItem}
+            />
           )}
-        </>
-      )}
-      
-      <PaymentDialog
-        open={showPaymentDialog}
-        onOpenChange={setShowPaymentDialog}
-        paymentMethod={paymentMethod}
-        total={total}
-        paymentSuccess={paymentSuccess}
-        onPaymentConfirmed={handlePaymentConfirmed}
-        generateReference={generateReference}
-      />
+        </div>
+        
+        {/* CartSection: always visible on desktop, slide-over on mobile */}
+        {cartType === 'pos' && (
+          <CartSidebar
+                customers={customers}
+                openPaymentDialog={openPaymentDialog}
+                refreshCustomers={refreshCustomers}
+            items={items}
+          />
+        )}
+        
+        <PaymentDialog
+          key={`${discountValue}-${discountType}-${showPaymentDialog}`}
+          open={showPaymentDialog}
+          onOpenChange={setShowPaymentDialog}
+          paymentMethod={paymentMethod}
+          subtotal={subtotal}
+          discount={discountValue}
+          discountType={discountType}
+          taxRate={taxRate}
+          paymentSuccess={paymentSuccess}
+          onPaymentConfirmed={handlePaymentConfirmed}
+          generateReference={generateReference}
+        />
 
-      {/* Payment Status Selection Dialog */}
-      {/* Remove the Payment Status Selection Dialog from the JSX */}
-      
-      <ReceiptDialog
-        open={showReceiptDialog}
-        onOpenChange={setShowReceiptDialog}
-        items={items}
-        customer={customer}
-        subtotal={subtotal}
-        taxTotal={taxTotal}
-        discountValue={discountValue}
-        discountType={discountType}
-        total={total}
-        paymentMethod={paymentMethod}
-        reference={invoiceReference || generateReference()}
-        onPrintReceipt={handlePrintReceipt}
-        onFinalize={finalizeTransaction}
-        isPrintingReceipt={isPrintingReceipt}
-      />
+        {/* Payment Status Selection Dialog */}
+        {/* Remove the Payment Status Selection Dialog from the JSX */}
+        
+        <ReceiptDialog
+          open={showReceiptDialog}
+          onOpenChange={setShowReceiptDialog}
+          items={items}
+          customer={customer}
+          subtotal={subtotal}
+          taxTotal={taxTotal}
+          discountValue={discountValue}
+          discountType={discountType}
+          total={total}
+          paymentMethod={paymentMethod}
+          reference={invoiceReference || generateReference()}
+          taxRate={taxRate}
+          onPrintReceipt={handlePrintReceipt}
+          onFinalize={finalizeTransaction}
+          isPrintingReceipt={isPrintingReceipt}
+        />
 
-      <NewCustomerDialog
-        open={newCustomerDialog}
-        onOpenChange={setNewCustomerDialog}
-        newCustomer={newCustomer}
-        setNewCustomer={setNewCustomer}
-        onAddCustomer={handleAddNewCustomer}
-        refreshCustomers={refreshCustomers}
-      />
-    </div>
+        <NewCustomerDialog
+          open={newCustomerDialog}
+          onOpenChange={setNewCustomerDialog}
+          newCustomer={newCustomer}
+          setNewCustomer={setNewCustomer}
+          onAddCustomer={handleAddNewCustomer}
+          refreshCustomers={refreshCustomers}
+        />
+      </div>
+
+    </>
   );
 };
 

@@ -45,7 +45,8 @@ export const CartSection: React.FC<CartSectionProps> = ({
     updateQuantity,
     updateQuantityWithUnit,
     updatePrice,
-    addItem
+    addItem,
+    updateBatchId
   } = useCart();
   const { profile } = useProfile();
   
@@ -99,10 +100,10 @@ export const CartSection: React.FC<CartSectionProps> = ({
     // Do not reset manualUnit
   };
   
-  const handleDiscountChange = () => {
+  useEffect(() => {
     const value = parseFloat(discountInput) || 0;
     setDiscount(value, discountTypeInput);
-  };
+  }, [discountInput, discountTypeInput]);
   
   const handleAddNewCustomer = async () => {
     if (!newCustomer.name || !newCustomer.phone) {
@@ -285,6 +286,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
                 onUpdateQuantity={qty => updateQuantity(index, qty)}
                 onUpdateQuantityWithUnit={(qty, unitLabel) => updateQuantityWithUnit(index, qty, unitLabel)}
                 onUpdatePrice={price => updatePrice(index, price)}
+                onBatchChange={batchId => updateBatchId(index, batchId)}
                 posMode={posMode}
                 unitLabel={item.unitLabel || item.product?.unitLabel}
                 unitType={item.unitType || item.product?.unitType}
@@ -301,7 +303,6 @@ export const CartSection: React.FC<CartSectionProps> = ({
                   setDiscountInput={setDiscountInput}
                   discountTypeInput={discountTypeInput}
                   setDiscountTypeInput={setDiscountTypeInput}
-                  handleDiscountChange={handleDiscountChange}
                 />
                 <PaymentButtons
                   disabled={items.length === 0}

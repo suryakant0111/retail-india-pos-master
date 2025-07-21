@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { PrefetchProvider } from "@/contexts/PrefetchContext";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { StockBatchProvider } from '@/contexts/StockBatchContext';
 
 // Pages
 import Login from "./pages/Login";
@@ -27,59 +28,63 @@ import GSTFiling from "./pages/GSTFiling";
 import MobileScanner from "./pages/MobileScanner";
 import Support from "./pages/Support";
 import DevSupport from "./pages/DevSupport";
+import BillsPage from "./pages/BillsPage";
 
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <CartProvider>
-          <PrefetchProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
-                {/* Public routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/mobile-scanner" element={<MobileScanner />} />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                
-                {/* Cashier routes */}
-                <Route element={<AuthGuard />}>
-                  <Route path="/pos" element={<POS />} />
-                  <Route path="/products" element={<Products />} />
-                  <Route path="/customers" element={<Customers />} />
-                  <Route path="/support" element={<Support />} />
-                </Route>
-                
-                {/* Manager routes */}
-                <Route element={<AuthGuard requireManager={true} />}>
-                  <Route path="/transactions" element={<Transactions />} />
-                  <Route path="/invoices" element={<Invoices />} />
-                </Route>
-                
-                {/* Admin routes */}
-                <Route element={<AuthGuard requireAdmin={true} />}>
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/inventory" element={<Inventory />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/shop" element={<ShopPage />} />
-                  <Route path="/gst-filing" element={<GSTFiling />} />
-                  <Route path="/dev-support" element={<DevSupport />} />
-                </Route>
-                
-                {/* Catch-all route */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </PrefetchProvider>
-        </CartProvider>
-      </AuthProvider>
-    </TooltipProvider>
+    <StockBatchProvider>
+      <TooltipProvider>
+        <AuthProvider>
+          <CartProvider>
+            <PrefetchProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  {/* Public routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/mobile-scanner" element={<MobileScanner />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  
+                  {/* Cashier routes */}
+                  <Route element={<AuthGuard />}>
+                    <Route path="/pos" element={<POS />} />
+                    <Route path="/products" element={<Products />} />
+                    <Route path="/customers" element={<Customers />} />
+                    <Route path="/support" element={<Support />} />
+                  </Route>
+                  
+                  {/* Manager routes */}
+                  <Route element={<AuthGuard requireManager={true} />}>
+                    <Route path="/transactions" element={<Transactions />} />
+                    <Route path="/invoices" element={<Invoices />} />
+                  </Route>
+                  
+                  {/* Admin routes */}
+                  <Route element={<AuthGuard requireAdmin={true} />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/inventory" element={<Inventory />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/admin" element={<AdminPage />} />
+                    <Route path="/shop" element={<ShopPage />} />
+                    <Route path="/gst-filing" element={<GSTFiling />} />
+                    <Route path="/dev-support" element={<DevSupport />} />
+                    <Route path="/bills" element={<BillsPage />} />
+                  </Route>
+                  
+                  {/* Catch-all route */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </PrefetchProvider>
+          </CartProvider>
+        </AuthProvider>
+      </TooltipProvider>
+    </StockBatchProvider>
   </QueryClientProvider>
 );
 

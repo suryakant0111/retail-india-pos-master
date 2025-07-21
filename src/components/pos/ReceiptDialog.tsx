@@ -29,6 +29,7 @@ interface ReceiptDialogProps {
   total: number;
   paymentMethod: 'cash' | 'upi' | 'card';
   reference: string;
+  taxRate: number;
   onPrintReceipt: () => void;
   onFinalize: (status: string) => void;
   isPrintingReceipt: boolean;
@@ -46,6 +47,7 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
   total,
   paymentMethod,
   reference,
+  taxRate,
   onPrintReceipt,
   onFinalize,
   isPrintingReceipt
@@ -175,25 +177,30 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
     finalY += 14;
     doc.text(`Subtotal: ₹${subtotal.toFixed(2)}`, 40, finalY);
     finalY += 14;
-    const sgst = taxTotal / 2;
-    const cgst = taxTotal / 2;
-    doc.text(`SGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${sgst.toFixed(2)}`, 40, finalY);
-    finalY += 14;
-    doc.text(`CGST (${items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%): ₹${cgst.toFixed(2)}`, 40, finalY);
-    finalY += 14;
+    let discountAmount = 0;
     if (discountValue > 0) {
-      const discountAmount = discountType === 'percentage'
-        ? (subtotal + taxTotal) * (discountValue / 100)
+      discountAmount = discountType === 'percentage'
+        ? subtotal * (discountValue / 100)
         : discountValue;
       doc.text(`Discount${discountType === 'percentage' ? ` (${discountValue}%)` : ''}: -₹${discountAmount.toFixed(2)}`, 40, finalY);
       finalY += 14;
     }
+    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+    doc.text(`Taxable Amount: ₹${discountedSubtotal.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    const sgst = discountedSubtotal * (taxRate / 2 / 100);
+    const cgst = discountedSubtotal * (taxRate / 2 / 100);
+    doc.text(`SGST (${(taxRate / 2).toFixed(1)}%): ₹${sgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    doc.text(`CGST (${(taxRate / 2).toFixed(1)}%): ₹${cgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    const totalValue = discountedSubtotal + sgst + cgst;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Total: ₹${total.toFixed(2)}`, 40, finalY);
+    doc.text(`Total: ₹${totalValue.toFixed(2)}`, 40, finalY);
     finalY += 18;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Amount in words: ${amountInWords(total)}`, 40, finalY);
+    doc.text(`Amount in words: ${amountInWords(totalValue)}`, 40, finalY);
     finalY += 24;
     doc.setDrawColor(200);
     doc.line(40, finalY, pageWidth - 40, finalY);
@@ -277,9 +284,10 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
     return result + ' Only';
   };
 
+  if (!open) return null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md print:max-w-full print:p-0">
+      <DialogContent className="max-w-[400px] p-2 w-full">
         <DialogHeader>
           <DialogTitle>Tax Invoice</DialogTitle>
           <DialogDescription>
@@ -298,98 +306,94 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
         {loadingBusiness ? (
           <div className="text-center py-8">Loading business details...</div>
         ) : (
-        <div className="border-t border-b py-4 my-4 print:border-none print:py-2">
-          <div className="text-center mb-4">
-            <h3 className="font-bold text-lg">{businessSettings.businessName}</h3>
-            <p className="text-sm text-muted-foreground">{businessSettings.address}</p>
-            <p className="text-sm text-muted-foreground">Phone: {businessSettings.phone}</p>
-            <p className="text-sm text-muted-foreground">Email: {businessSettings.email}</p>
-            <p className="text-sm text-muted-foreground">GSTIN: {businessSettings.gstNumber}</p>
+        <div className="border-t border-b py-2 my-2 print:border-none print:py-2 w-full max-w-full overflow-x-auto">
+          <div className="text-center mb-2">
+            <h3 className="font-bold text-base">{businessSettings.businessName}</h3>
+            <p className="text-xs text-muted-foreground">{businessSettings.address}</p>
+            <p className="text-xs text-muted-foreground">Phone: {businessSettings.phone}</p>
+            <p className="text-xs text-muted-foreground">Email: {businessSettings.email}</p>
+            <p className="text-xs text-muted-foreground">GSTIN: {businessSettings.gstNumber}</p>
           </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm font-medium">
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs font-medium flex-wrap">
               <span>Item</span>
               <div className="flex">
-                <span className="w-16 text-right">Qty</span>
-                <span className="w-20 text-right">Amount</span>
+                <span className="w-12 text-right">Qty</span>
+                <span className="w-16 text-right">Amount</span>
               </div>
             </div>
-            
             {items.map((item, index) => (
-              <div key={index} className="flex justify-between text-sm">
-                <div className="flex-1">
-                  <div>{item.product.name}</div>
+              <div key={index} className="flex justify-between text-xs flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{item.product.name}</div>
                   {item.variant && (
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[10px] text-muted-foreground truncate">
                       {Object.entries(item.variant.attributes)
                         .map(([key, value]) => `${key}: ${value}`)
                         .join(', ')}
                     </div>
                   )}
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-[10px] text-muted-foreground">
                     ₹{item.price.toFixed(2)} x {item.quantity}
                   </div>
                 </div>
                 <div className="flex">
-                  <span className="w-16 text-right">{item.quantity}</span>
-                  <span className="w-20 text-right">
-                    ₹{(item.price * item.quantity).toFixed(2)}
-                  </span>
+                  <span className="w-12 text-right">{item.quantity}</span>
+                  <span className="w-16 text-right">₹{(item.price * item.quantity).toFixed(2)}</span>
                 </div>
               </div>
             ))}
           </div>
-          
-          <div className="border-t mt-4 pt-4 space-y-1">
-            <div className="flex justify-between text-sm">
+          <div className="border-t mt-2 pt-2 space-y-1">
+            <div className="flex justify-between text-xs flex-wrap">
               <span>Subtotal</span>
-              <span>₹{subtotal.toFixed(2)}</span>
+              <span className="w-16 text-right">₹{subtotal.toFixed(2)}</span>
             </div>
-            
-            {/* Tax breakdown - important for GST invoices */}
-            <div className="flex justify-between text-sm">
-              <span>SGST ({items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%)</span>
-              <span>₹{(taxTotal / 2).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>CGST ({items.length > 0 ? (items[0].product.taxRate || 0) / 2 : 0}%)</span>
-              <span>₹{(taxTotal / 2).toFixed(2)}</span>
-            </div>
-            
             {discountValue > 0 && (
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs flex-wrap">
                 <span>Discount {discountType === 'percentage' ? `(${discountValue}%)` : ''}</span>
-                <span>-₹{(discountType === 'percentage' ? (subtotal + taxTotal) * (discountValue / 100) : discountValue).toFixed(2)}</span>
+                <span className="w-16 text-right">
+                  -₹{(discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue).toFixed(2)}
+                </span>
               </div>
             )}
-            <div className="flex justify-between font-bold pt-2 text-base">
+            <div className="flex justify-between text-xs flex-wrap">
+              <span>Taxable Amount</span>
+              <span className="w-16 text-right">₹{(Math.max(0, subtotal - (discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue))).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs flex-wrap">
+              <span>SGST ({(taxRate / 2).toFixed(1)}%)</span>
+              <span className="w-16 text-right">₹{(Math.max(0, subtotal - (discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue)) * (taxRate / 2 / 100)).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs flex-wrap">
+              <span>CGST ({(taxRate / 2).toFixed(1)}%)</span>
+              <span className="w-16 text-right">₹{(Math.max(0, subtotal - (discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue)) * (taxRate / 2 / 100)).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold pt-2 text-sm flex-wrap">
               <span>Total</span>
-              <span>₹{total.toFixed(2)}</span>
+              <span className="w-16 text-right">₹{(Math.max(0, subtotal - (discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue)) + 2 * (Math.max(0, subtotal - (discountType === 'percentage' ? subtotal * (discountValue / 100) : discountValue)) * (taxRate / 2 / 100))).toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm pt-2">
+            <div className="flex justify-between text-xs pt-2 flex-wrap">
               <span>Payment Method</span>
-              <span>{paymentMethod.toUpperCase()}</span>
+              <span className="w-16 text-right">{paymentMethod.toUpperCase()}</span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between text-xs flex-wrap">
               <span>Payment Status</span>
-              <span className="text-green-600 font-medium">PAID</span>
+              <span className="w-16 text-right text-green-600 font-medium">PAID</span>
             </div>
           </div>
-          
-          <div className="text-center mt-6 border-t border-dashed pt-3">
-            <p className="text-xs text-muted-foreground">Thank you for your business!</p>
-            <p className="text-xs text-muted-foreground">This is a computer generated invoice.</p>
-            <p className="text-xs text-muted-foreground mt-1">Authorized Signatory</p>
+          <div className="text-center mt-4 border-t border-dashed pt-2">
+            <p className="text-[10px] text-muted-foreground">Thank you for your business!</p>
+            <p className="text-[10px] text-muted-foreground">This is a computer generated invoice.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Authorized Signatory</p>
           </div>
         </div>
         )}
-        
-        <DialogFooter className="flex justify-between">
+        <DialogFooter className="flex flex-wrap justify-between w-full max-w-full gap-2 mt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap w-full sm:w-auto justify-end">
             <Button 
               variant="outline" 
               onClick={generatePDF}
@@ -398,21 +402,12 @@ export const ReceiptDialog: React.FC<ReceiptDialogProps> = ({
               Download PDF
             </Button>
             <Button 
-              variant="outline" 
+              variant="default" 
               onClick={onPrintReceipt}
               disabled={isPrintingReceipt}
             >
-              {isPrintingReceipt ? (
-                <>
-                  <span className="animate-spin mr-2">⏳</span>
-                  Printing...
-                </>
-              ) : (
-                <>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print Receipt
-                </>
-              )}
+              <Printer className="mr-2 h-4 w-4" />
+              {isPrintingReceipt ? 'Printing...' : 'Print Receipt'}
             </Button>
             <Button 
               variant="destructive" 

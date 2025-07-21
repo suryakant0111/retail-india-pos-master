@@ -13,7 +13,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useProfile } from '@/hooks/useProfile';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { PlusCircle, Grid, List, Download, Upload, Camera, QrCode, Pencil, Trash2 } from 'lucide-react';
+import { PlusCircle, Grid, List, Download, Upload, Camera, QrCode, Pencil, Trash2, Plus, History } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
@@ -24,6 +24,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { generateNextBarcode } from '@/lib/barcode-utils';
 import { BarcodeProductData } from '@/services/barcode-service';
+import { StockAdjustment } from '@/types';
+import { useStockBatches, StockBatchProvider } from '@/contexts/StockBatchContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import ProductSearchBar from '@/components/products/ProductSearchBar';
+import StockHistoryModal from '@/components/products/StockHistoryModal';
+import BarcodeScanner from '@/components/products/BarcodeScanner';
 
 const Products = () => {
   // State management
@@ -55,6 +62,12 @@ const Products = () => {
   // Remove duplicate editProduct/setEditProduct declarations (keep only one)
   const [lastScannedProduct, setLastScannedProduct] = useState<any | null>(null);
 
+  // Stock adjustment state
+  const [showStockDialog, setShowStockDialog] = useState<string | null>(null); // productId or null
+  const [stockQty, setStockQty] = useState('');
+  const [stockNote, setStockNote] = useState('');
+  const [showStockHistory, setShowStockHistory] = useState(false); // productId or null
+
   // Hooks
   const { 
     products, 
@@ -74,6 +87,62 @@ const Products = () => {
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const productRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const { stockBatches, setStockBatches } = useStockBatches();
+  const { profile: authProfile } = useAuth();
+  const [stockHistory, setStockHistory] = useState([]);
+  const [userMap, setUserMap] = useState({});
+  const [productMap, setProductMap] = useState({});
+
+  useEffect(() => {
+    async function fetchUsers() {
+      const { data, error } = await supabase.auth.admin.listUsers();
+      if (data?.users) {
+        const map = {};
+        (data.users as any[]).forEach(u => {
+          map[u.id] = u.email || u.user_metadata?.full_name || u.id;
+        });
+        setUserMap(map);
+      }
+    }
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    async function fetchProducts() {
+      if (!authProfile?.shop_id) return;
+      const { data } = await supabase
+        .from('products')
+        .select('id, name')
+        .eq('shop_id', authProfile.shop_id);
+      if (data) {
+        const map = {};
+        data.forEach(p => { map[p.id] = p.name; });
+        setProductMap(map);
+      }
+    }
+    fetchProducts();
+  }, [authProfile?.shop_id]);
+
+  const fetchStockHistory = async () => {
+    if (!authProfile?.shop_id) return;
+    const { data } = await supabase
+      .from('stock_adjustments')
+      .select('*, product:product_id(name), user:user_id(name)')
+      .eq('shop_id', authProfile.shop_id)
+      .order('created_at', { ascending: false });
+    console.log('Fetched stock adjustments:', data);
+    setStockHistory(data || []);
+  };
+
+  useEffect(() => {
+    if (showStockHistory) fetchStockHistory();
+    // eslint-disable-next-line
+  }, [showStockHistory, authProfile?.shop_id]);
+
+  useEffect(() => {
+    console.log('Stock history:', stockHistory);
+    console.log('User map:', userMap);
+  }, [stockHistory, userMap]);
 
   // Helper function to get unit labels based on unit type
   const getUnitLabels = (unitType: string) => {
@@ -572,6 +641,42 @@ const Products = () => {
     });
   };
 
+  // Add stock handler
+  const handleAddStock = (product: Product) => {
+    const qty = parseInt(stockQty);
+    if (!qty || isNaN(qty)) {
+      toast({ title: 'Invalid Quantity', description: 'Enter a valid quantity to add.', variant: 'destructive' });
+      return;
+    }
+    // Update product stock (simulate updateProduct)
+    updateProduct(product.id, { ...product, stock: product.stock + qty });
+    // Log adjustment
+    setStockBatches(prev => [
+      ...prev,
+      {
+        id: `${Date.now()}`,
+        productId: product.id,
+        quantity: qty,
+        type: 'in',
+        note: stockNote,
+        createdAt: new Date(),
+        userId: profile?.id
+      }
+    ]);
+    setShowStockDialog(null);
+    setStockQty('');
+    setStockNote('');
+    toast({ title: 'Stock Added', description: `Added ${qty} to ${product.name}.` });
+  };
+
+  // Stock update handler for inline card updates
+  const handleStockUpdate = (productId: string, newStock: number) => {
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      updateProduct(productId, { ...product, stock: newStock });
+    }
+  };
+
   if (loading) {
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -599,6 +704,13 @@ const Products = () => {
   
   return (
     <div className="p-4 w-full">
+      <Button
+        variant="outline"
+        className="mb-4"
+        onClick={() => setShowStockHistory(true)}
+      >
+        View Stock History
+      </Button>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <div>
@@ -607,30 +719,24 @@ const Products = () => {
             Manage your product inventory ({products.length} products)
           </p>
         </div>
-        <div className="flex gap-2 mt-4 md:mt-0">
-          <Button variant={bulkAddMode ? "default" : "outline"} onClick={() => setBulkAddMode(b => !b)}>
+        <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0 w-full sm:w-auto">
+          <Button variant={bulkAddMode ? "default" : "outline"} className="w-full sm:w-auto" onClick={() => setBulkAddMode(b => !b)}>
             {bulkAddMode ? 'Bulk Add: ON' : 'Bulk Add Products'}
           </Button>
-          <Button variant="outline" onClick={() => setShowAnalytics(!showAnalytics)}>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowAnalytics(!showAnalytics)}>
             Analytics
           </Button>
-          <Button variant="outline" onClick={() => {
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
             setShowBarcodeScanner(true);
             setIsMobilePolling(true);
           }}>
             <QrCode className="mr-2 h-4 w-4" /> Mobile QR Scan
           </Button>
-          {/* Test barcode scanning */}
-          <Button 
-            variant="outline" 
-            onClick={() => handleManualBarcodeEntry('049000006344')}
-            title="Test with Coca-Cola barcode"
-          >
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => handleManualBarcodeEntry('049000006344')} title="Test with Coca-Cola barcode">
             Test Scan
           </Button>
-          {/* Stop Polling button outside dialog */}
           {isMobilePolling && (
-            <Button variant="destructive" onClick={() => {
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={() => {
               if (mobileScannerStopRef.current) mobileScannerStopRef.current();
               setIsMobilePolling(false);
               setShowBarcodeScanner(false);
@@ -638,7 +744,7 @@ const Products = () => {
               Stop Mobile Scanner
             </Button>
           )}
-          <Button onClick={() => setShowAddProductDialog(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setShowAddProductDialog(true)}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Product
           </Button>
         </div>
@@ -742,18 +848,12 @@ const Products = () => {
       />
 
       {/* Filters */}
-      <ProductFilters
+      <ProductSearchBar
         searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        setSearchTerm={setSearchTerm}
         category={category}
-        onCategoryChange={setCategory}
+        setCategory={setCategory}
         categories={categories}
-        priceRange={priceRange}
-        onPriceRangeChange={setPriceRange}
-        stockFilter={stockFilter}
-        onStockFilterChange={setStockFilter}
-        dateFilter={dateFilter}
-        onDateFilterChange={setDateFilter}
         onClearFilters={clearFilters}
       />
 
@@ -815,8 +915,8 @@ const Products = () => {
               className={highlightedId === product.id ? 'ring-4 ring-amber-400 transition-all duration-500' : ''}
             >
               {viewMode === 'grid' ? (
-                <div className="max-w-[180px] mx-auto">
-                  <div className="mb-2">
+                <div className="max-w-[180px] mx-auto flex flex-col items-center">
+                  <div className="mb-2 flex items-center w-full justify-between">
                     <Checkbox
                       checked={selectedProducts.includes(product.id)}
                       onCheckedChange={(checked) => handleProductSelection(product.id, checked as boolean)}
@@ -826,8 +926,9 @@ const Products = () => {
                 product={product}
                 showAddToCart={false}
                 showDeleteButton={!!profile && (profile.role === 'admin' || profile.role === 'manager')}
-                    onDelete={deleteProduct}
+                onDelete={deleteProduct}
                 onEdit={() => setEditProduct(product)}
+                onStockUpdate={handleStockUpdate}
               />
                 </div>
               ) : (
@@ -850,16 +951,7 @@ const Products = () => {
                     <div className="font-semibold">₹{product.price}</div>
                     <div className="text-sm text-muted-foreground">GST: {product.tax}%</div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditProduct(product)}>
-                      Edit
-                    </Button>
-                    {(profile?.role === 'admin' || profile?.role === 'manager') && (
-                      <Button size="sm" variant="destructive" onClick={() => deleteProduct(product.id)}>
-                        Delete
-                      </Button>
-                    )}
-                  </div>
+
                 </div>
               )}
             </div>
@@ -1474,18 +1566,66 @@ const Products = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Add Stock Dialog */}
+      <Dialog open={!!showStockDialog} onOpenChange={open => { if (!open) { setShowStockDialog(null); setStockQty(''); setStockNote(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Stock</DialogTitle>
+          </DialogHeader>
+          {showStockDialog && (() => {
+            const prod = products.find(p => p.id === showStockDialog);
+            return prod && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 bg-gray-50 rounded p-2 border">
+                  <img src={prod.image_url || prod.image || '/placeholder.svg'} alt={prod.name} className="w-12 h-12 object-cover rounded" />
+                  <div>
+                    <div className="font-semibold text-lg">{prod.name}</div>
+                    <div className="text-xs text-muted-foreground">Current Stock: <b>{prod.stock}</b></div>
+                  </div>
+                </div>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium mb-1">Quantity to add</label>
+                    <Input
+                      type="number"
+                      placeholder="Quantity"
+                      value={stockQty}
+                      onChange={e => setStockQty(e.target.value)}
+                      min="1"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium mb-1">Note (optional)</label>
+                    <Input
+                      type="text"
+                      placeholder="Note"
+                      value={stockNote}
+                      onChange={e => setStockNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => handleAddStock(prod)} className="bg-green-600 hover:bg-green-700 text-white">Add Stock</Button>
+                  <Button variant="outline" onClick={() => setShowStockDialog(null)}>
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+      {/* Stock History Dialog */}
+      <StockHistoryModal
+        open={showStockHistory}
+        onClose={() => setShowStockHistory(false)}
+      />
+
       {/* Mobile QR Scanner */}
-      <MobileQRScanner
+      <BarcodeScanner
         open={showBarcodeScanner}
-        onOpenChange={(open) => {
-          setShowBarcodeScanner(open);
-          // Don't reset polling state when dialog closes - let user manually stop
-        }}
-        onProductFound={handleBarcodeProductFound}
-        onBarcodeScanned={handleManualBarcodeEntry}
-        isPolling={isMobilePolling}
-        setIsPolling={setIsMobilePolling}
-        stopPollingRef={mobileScannerStopRef}
+        onClose={() => setShowBarcodeScanner(false)}
+        onScan={handleBarcodeScan}
       />
     </div>
   );

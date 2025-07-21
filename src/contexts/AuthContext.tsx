@@ -11,6 +11,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string, role?: string) => Promise<any>;
   signOut: () => Promise<void>;
+  resetPasswordForEmail: (email: string) => Promise<any>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -74,8 +75,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
   };
 
+  const resetPasswordForEmail = async (email: string) => {
+    return await supabase.auth.resetPasswordForEmail(email);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, accessDenied, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, accessDenied, signIn, signUp, signOut, resetPasswordForEmail }}>
       {accessDenied ? (
         <PendingApprovalScreen />
       ) : (

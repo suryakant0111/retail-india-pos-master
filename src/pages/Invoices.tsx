@@ -222,25 +222,32 @@ const Invoices = () => {
     finalY += 14;
     doc.text(`Subtotal: ₹${invoice.subtotal.toFixed(2)}`, 40, finalY);
     finalY += 14;
-    const sgst = invoice.taxTotal / 2;
-    const cgst = invoice.taxTotal / 2;
-    doc.text(`SGST (${invoice.items.length > 0 ? (invoice.items[0].product.taxRate || 0) / 2 : 0}%): ₹${sgst.toFixed(2)}`, 40, finalY);
-    finalY += 14;
-    doc.text(`CGST (${invoice.items.length > 0 ? (invoice.items[0].product.taxRate || 0) / 2 : 0}%): ₹${cgst.toFixed(2)}`, 40, finalY);
-    finalY += 14;
+    let discountAmount = 0;
     if (invoice.discountValue > 0) {
-      const discountAmount = invoice.discountType === 'percentage'
-        ? (invoice.subtotal + invoice.taxTotal) * (invoice.discountValue / 100)
+      discountAmount = invoice.discountType === 'percentage'
+        ? invoice.subtotal * (invoice.discountValue / 100)
         : invoice.discountValue;
       doc.text(`Discount${invoice.discountType === 'percentage' ? ` (${invoice.discountValue}%)` : ''}: -₹${discountAmount.toFixed(2)}`, 40, finalY);
       finalY += 14;
     }
+    const discountedSubtotal = Math.max(0, invoice.subtotal - discountAmount);
+    doc.text(`Taxable Amount: ₹${discountedSubtotal.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    // Use stored taxTotal and taxRate from invoice
+    const sgst = (invoice.taxTotal || 0) / 2;
+    const cgst = (invoice.taxTotal || 0) / 2;
+    const taxRate = invoice.taxRate !== undefined ? invoice.taxRate : (invoice.items.length > 0 ? (invoice.items[0].product.taxRate || 0) : 0);
+    doc.text(`SGST (${(taxRate / 2).toFixed(1)}%): ₹${sgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    doc.text(`CGST (${(taxRate / 2).toFixed(1)}%): ₹${cgst.toFixed(2)}`, 40, finalY);
+    finalY += 14;
+    const totalValue = discountedSubtotal + sgst + cgst;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 40, finalY);
+    doc.text(`Total: ₹${totalValue.toFixed(2)}`, 40, finalY);
     finalY += 18;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Amount in words: ${amountInWords(invoice.total)}`, 40, finalY);
+    doc.text(`Amount in words: ${amountInWords(totalValue)}`, 40, finalY);
     finalY += 24;
     doc.setDrawColor(200);
     doc.line(40, finalY, pageWidth - 40, finalY);
