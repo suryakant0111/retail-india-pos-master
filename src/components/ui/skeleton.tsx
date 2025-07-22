@@ -1,3 +1,4 @@
+// src/components/ui/Skeleton.tsx
 import React from 'react';
 
 interface SkeletonProps {
@@ -14,4 +15,4 @@ const Skeleton: React.FC<SkeletonProps> = ({ className = '', width, height, styl
   />
 );
 
-export default Skeleton;
+export { Skeleton };

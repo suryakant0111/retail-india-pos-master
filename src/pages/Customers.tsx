@@ -10,8 +10,7 @@ import { Customer } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
-import Skeleton from '@/components/ui/Skeleton';
-
+import { Skeleton } from '@/components/ui/skeleton';
 const Customers = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
