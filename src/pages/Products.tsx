@@ -30,7 +30,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import ProductSearchBar from '@/components/products/ProductSearchBar';
 import StockHistoryModal from '@/components/products/StockHistoryModal';
-import Skeleton from '@/components/ui/Skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Products = () => {
   // State management
