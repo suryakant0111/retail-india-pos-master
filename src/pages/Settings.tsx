@@ -52,6 +52,7 @@ const Settings = () => {
   const [loadingBusiness, setLoadingBusiness] = useState(false);
   const [savingBusiness, setSavingBusiness] = useState(false);
   const [posMode, setPosMode] = useState<'retail' | 'kirana'>('retail');
+  const [loadingPayment, setLoadingPayment] = useState(false);
 
   useEffect(() => {
     async function fetchBusinessSettings() {
@@ -75,6 +76,7 @@ const Settings = () => {
     }
     async function fetchPaymentSettings() {
       if (!profile?.shop_id) return;
+      setLoadingPayment(true);
       const { data, error } = await supabase
         .from('shop_settings')
         .select('payment_settings, pos_mode')
@@ -86,6 +88,7 @@ const Settings = () => {
       if (data && data.pos_mode) {
         setPosMode(data.pos_mode);
       }
+      setLoadingPayment(false);
     }
     fetchBusinessSettings();
     fetchPaymentSettings();
@@ -189,93 +192,70 @@ const Settings = () => {
               <CardDescription>Configure your payment options and UPI details</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">UPI Payment Settings</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="upiId">UPI ID</Label>
-                    <Input 
-                      id="upiId" 
-                      value={paymentSettings.upiId}
-                      onChange={(e) => handlePaymentSettingChange('upiId', e.target.value)}
-                      placeholder="username@bankcode"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="accountName">Account Name</Label>
-                    <Input 
-                      id="accountName" 
-                      value={paymentSettings.accountName}
-                      onChange={(e) => handlePaymentSettingChange('accountName', e.target.value)}
-                      placeholder="Name on UPI Account"
-                    />
-                  </div>
+              {loadingPayment ? (
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-6 bg-gray-200 rounded w-1/3 mb-2" />
+                  <div className="h-10 bg-gray-200 rounded w-full mb-2" />
+                  <div className="h-6 bg-gray-200 rounded w-1/2 mb-2" />
+                  <div className="h-10 bg-gray-200 rounded w-full mb-2" />
+                  <div className="h-6 bg-gray-200 rounded w-1/4 mb-2" />
+                  <div className="h-10 bg-gray-200 rounded w-full mb-2" />
                 </div>
-              </div>
-              
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Enabled Payment Methods</h3>
+              ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Wallet className="h-4 w-4" />
+                  <h3 className="text-lg font-medium">UPI Payment Settings</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="upiId">UPI ID</Label>
+                      <Input 
+                        id="upiId" 
+                        value={paymentSettings.upiId}
+                        onChange={(e) => handlePaymentSettingChange('upiId', e.target.value)}
+                        disabled={loadingPayment}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="accountName">Account Name</Label>
+                      <Input 
+                        id="accountName" 
+                        value={paymentSettings.accountName}
+                        onChange={(e) => handlePaymentSettingChange('accountName', e.target.value)}
+                        disabled={loadingPayment}
+                      />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-medium">Enabled Payment Methods</h3>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="enableUpi"
+                        checked={paymentSettings.enableUpi}
+                        onCheckedChange={(checked) => handlePaymentSettingChange('enableUpi', checked)}
+                        disabled={loadingPayment}
+                      />
                       <Label htmlFor="enableUpi" className="font-normal">UPI Payments</Label>
                     </div>
-                    <Switch 
-                      id="enableUpi" 
-                      checked={paymentSettings.enableUpi}
-                      onCheckedChange={(checked) => handlePaymentSettingChange('enableUpi', checked)}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Store className="h-4 w-4" />
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="enableCash"
+                        checked={paymentSettings.enableCash}
+                        onCheckedChange={(checked) => handlePaymentSettingChange('enableCash', checked)}
+                        disabled={loadingPayment}
+                      />
                       <Label htmlFor="enableCash" className="font-normal">Cash Payments</Label>
                     </div>
-                    <Switch 
-                      id="enableCash" 
-                      checked={paymentSettings.enableCash}
-                      onCheckedChange={(checked) => handlePaymentSettingChange('enableCash', checked)}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <CreditCard className="h-4 w-4" />
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="enableCard"
+                        checked={paymentSettings.enableCard}
+                        onCheckedChange={(checked) => handlePaymentSettingChange('enableCard', checked)}
+                        disabled={loadingPayment}
+                      />
                       <Label htmlFor="enableCard" className="font-normal">Card Payments</Label>
                     </div>
-                    <Switch 
-                      id="enableCard" 
-                      checked={paymentSettings.enableCard}
-                      onCheckedChange={(checked) => handlePaymentSettingChange('enableCard', checked)}
-                    />
                   </div>
                 </div>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">POS Mode</h3>
-                <div className="flex items-center gap-4">
-                  <Label htmlFor="posModeRetail">Standard Retail</Label>
-                  <input
-                    type="radio"
-                    id="posModeRetail"
-                    name="posMode"
-                    value="retail"
-                    checked={posMode === 'retail'}
-                    onChange={() => setPosMode('retail')}
-                  />
-                  <Label htmlFor="posModeKirana">Kirana/Grocery</Label>
-                  <input
-                    type="radio"
-                    id="posModeKirana"
-                    name="posMode"
-                    value="kirana"
-                    checked={posMode === 'kirana'}
-                    onChange={() => setPosMode('kirana')}
-                  />
-                </div>
-              </div>
+              )}
             </CardContent>
             <CardFooter>
               <Button onClick={savePaymentSettings}>

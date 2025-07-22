@@ -23,6 +23,13 @@ interface CartContextType {
   subtotal: number;
   taxTotal: number;
   total: number;
+  setCart: (cart: {
+    items: CartItem[];
+    customer: Customer | null;
+    discountValue: number;
+    discountType: 'percentage' | 'fixed';
+    taxRate: number;
+  }) => void;
 }
 
 const CartContext = createContext<CartContextType>({
@@ -44,6 +51,7 @@ const CartContext = createContext<CartContextType>({
   subtotal: 0,
   taxTotal: 0,
   total: 0,
+  setCart: () => {},
 });
 
 export const useCart = () => useContext(CartContext);
@@ -345,6 +353,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDiscountType(type);
   };
 
+  // Add setCart function
+  const setCart = (cart: {
+    items: CartItem[];
+    customer: Customer | null;
+    discountValue: number;
+    discountType: 'percentage' | 'fixed';
+    taxRate: number;
+  }) => {
+    setItems(cart.items || []);
+    setCustomerState(cart.customer || null);
+    setDiscountValue(cart.discountValue || 0);
+    setDiscountType(cart.discountType || 'percentage');
+    setTaxRate(cart.taxRate || 0);
+  };
+
   return (
     <CartContext.Provider
       value={{
@@ -366,6 +389,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         subtotal,
         taxTotal,
         total: finalTotal,
+        setCart, // Expose setCart
       }}
     >
       {children}

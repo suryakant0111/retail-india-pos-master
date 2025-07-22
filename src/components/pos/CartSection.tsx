@@ -14,6 +14,7 @@ import { PaymentButtons } from './PaymentButtons';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/types';
 import { useProfile } from '@/hooks/useProfile';
+import HoldCartButtons from '@/components/pos/HoldCartButtons';
 
 interface CartSectionProps {
   customers: Customer[];
@@ -21,6 +22,11 @@ interface CartSectionProps {
   refreshCustomers: () => Promise<void>;
   products?: Product[];
   posMode?: 'retail' | 'kirana';
+  paymentSettings: any;
+  currentCart: any;
+  onResumeCart: (cart: any) => void;
+  onClearCart: () => void;
+  onReviewConflicts: () => void;
 }
 
 export const CartSection: React.FC<CartSectionProps> = ({
@@ -29,6 +35,11 @@ export const CartSection: React.FC<CartSectionProps> = ({
   refreshCustomers,
   products = [],
   posMode = 'retail',
+  paymentSettings,
+  currentCart,
+  onResumeCart,
+  onClearCart,
+  onReviewConflicts
 }) => {
   const { 
     items, 
@@ -201,6 +212,17 @@ export const CartSection: React.FC<CartSectionProps> = ({
 
   return (
     <div className="relative z-0 lg:w-[420px] xl:w-[500px] border-l flex flex-col h-full overflow-auto p-2 sm:p-3 lg:p-0">
+      {/* Utility Buttons at the top of the cart */}
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <HoldCartButtons
+          currentCart={currentCart}
+          onResumeCart={onResumeCart}
+          onClearCart={onClearCart}
+        />
+        <Button onClick={onReviewConflicts} variant="outline">
+          Review Conflicts
+        </Button>
+      </div>
       <div className="p-2 sm:p-3 lg:p-4 border-b bg-white">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Current Order</h2>
@@ -307,6 +329,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
                 <PaymentButtons
                   disabled={items.length === 0}
                   onPaymentMethodSelect={openPaymentDialog}
+                  paymentSettings={paymentSettings}
                 />
               </div>
             </div>

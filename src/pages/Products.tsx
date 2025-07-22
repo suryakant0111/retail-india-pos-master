@@ -30,6 +30,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import ProductSearchBar from '@/components/products/ProductSearchBar';
 import StockHistoryModal from '@/components/products/StockHistoryModal';
+import Skeleton from '@/components/ui/Skeleton';
 
 const Products = () => {
   // State management
@@ -91,6 +92,7 @@ const Products = () => {
   const [stockHistory, setStockHistory] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [productMap, setProductMap] = useState({});
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
   useEffect(() => {
     async function fetchUsers() {
@@ -108,6 +110,7 @@ const Products = () => {
 
   useEffect(() => {
     async function fetchProducts() {
+      setLoadingProducts(true);
       if (!authProfile?.shop_id) return;
       const { data } = await supabase
         .from('products')
@@ -118,6 +121,7 @@ const Products = () => {
         data.forEach(p => { map[p.id] = p.name; });
         setProductMap(map);
       }
+      setLoadingProducts(false);
     }
     fetchProducts();
   }, [authProfile?.shop_id]);
@@ -679,11 +683,10 @@ const Products = () => {
   if (loading) {
   return (
     <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p>Loading products...</p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} height={180} className="w-full mb-2" />
+          ))}
         </div>
       </div>
     );
@@ -889,7 +892,13 @@ const Products = () => {
       </div>
       
       {/* Products Grid/List */}
-      {filteredProducts.length === 0 ? (
+      {loadingProducts ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} height={180} className="w-full mb-2" />
+          ))}
+        </div>
+      ) : filteredProducts.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center">
           <div className="rounded-full bg-muted p-4 mb-4">
             <Grid className="h-6 w-6 text-muted-foreground" />

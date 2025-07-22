@@ -10,11 +10,12 @@ import { Customer } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
+import Skeleton from '@/components/ui/Skeleton';
 
 const Customers = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Remove old loading state
   const [error, setError] = useState<string | null>(null);
   const [newCustomerDialog, setNewCustomerDialog] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
@@ -25,17 +26,18 @@ const Customers = () => {
   });
   const { toast } = useToast();
   const { profile } = useProfile();
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
 
   // Fetch customers from Supabase
   useEffect(() => {
     const fetchCustomers = async () => {
       if (!profile?.shop_id) {
         setCustomers([]);
-        setLoading(false);
+        setLoadingCustomers(false);
         return;
       }
       console.log('Fetching customers for shop_id:', profile.shop_id);
-      setLoading(true);
+      setLoadingCustomers(true);
       setError(null);
       const { data, error } = await supabase
         .from('customers')
@@ -55,7 +57,7 @@ const Customers = () => {
           }))
         );
       }
-      setLoading(false);
+      setLoadingCustomers(false);
     };
     fetchCustomers();
   }, [profile?.shop_id]);
@@ -188,8 +190,12 @@ const Customers = () => {
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="py-10 text-center text-muted-foreground">Loading customers...</div>
+          {loadingCustomers ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} height={40} className="w-full mb-2" />
+              ))}
+            </div>
           ) : error ? (
             <div className="py-10 text-center text-destructive">{error}</div>
           ) : (

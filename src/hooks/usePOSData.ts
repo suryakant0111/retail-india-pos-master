@@ -5,6 +5,16 @@ import { useCart } from '@/contexts/CartContext';
 import { useProfile } from '@/hooks/useProfile';
 import { Product, Customer } from '@/types';
 
+// Add normalization helper
+function normalizePaymentSettings(settings: any) {
+  return {
+    ...settings,
+    enableUpi: settings?.enableUpi === true || settings?.enableUpi === 'true',
+    enableCash: settings?.enableCash === true || settings?.enableCash === 'true',
+    enableCard: settings?.enableCard === true || settings?.enableCard === 'true',
+  };
+}
+
 export function usePOSData() {
   const { 
     items, 
@@ -42,15 +52,26 @@ export function usePOSData() {
   const { profile } = useProfile();
   const [recentSalesProducts, setRecentSalesProducts] = useState<Product[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
-  const [cartType, setCartType] = useState<'pos' | 'excel'>('pos');
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  // Initialize cartType from localStorage if available
+  const getInitialCartType = () => {
+    const saved = localStorage.getItem('cartType');
+    if (saved === 'excel' || saved === 'pos') return saved;
+    return 'pos';
+  };
+  const [cartType, setCartType] = useState<'pos' | 'excel'>(getInitialCartType());
   const [newCustomerDialog, setNewCustomerDialog] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({});
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
 
   const fetchProducts = async () => {
     if (!profile?.shop_id) return;
+    setLoadingProducts(true);
     const { data, error } = await supabase.from('products').select('*').eq('shop_id', profile.shop_id);
     if (!error && data) setProducts(data);
+    setLoadingProducts(false);
   };
 
   const fetchRecentSales = async () => {
@@ -88,29 +109,50 @@ export function usePOSData() {
       fetchProducts();
       fetchRecentInvoices();
       async function fetchCustomers() {
+        if (!profile?.shop_id) return;
+        setLoadingCustomers(true);
         const { data, error } = await supabase.from('customers').select('*').eq('shop_id', profile.shop_id);
         if (!error && data) setCustomers(data);
+        setLoadingCustomers(false);
       }
       async function fetchSettings() {
+        setLoadingSettings(true);
         const { data, error } = await supabase.from('shop_settings').select('*').eq('shop_id', profile.shop_id).single();
         if (!error && data) {
           setBusinessSettings(data.business_settings || {});
-          setPaymentSettings(data.payment_settings || {});
+          setPaymentSettings(normalizePaymentSettings(data.payment_settings || {}));
           setPosMode(data.pos_mode || 'retail');
         } else {
           setBusinessSettings({});
           setPaymentSettings({});
           setPosMode('retail');
         }
+        setLoadingSettings(false);
       }
       fetchCustomers();
       fetchSettings();
+
+      // Auto-refresh settings when tab becomes visible
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          fetchSettings();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
   }, [profile?.shop_id]);
 
   useEffect(() => {
     (window as any).products = products;
   }, [products]);
+
+  // Persist cartType to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('cartType', cartType);
+  }, [cartType]);
 
   const refreshCustomers = async () => {
     if (!profile?.shop_id) return;
@@ -202,6 +244,9 @@ export function usePOSData() {
     fetchRecentSales,
     fetchRecentInvoices,
     refreshCustomers,
-    handleAddNewCustomer
+    handleAddNewCustomer,
+    loadingProducts,
+    loadingCustomers,
+    loadingSettings
   };
 } 

@@ -9,6 +9,7 @@ import React, { useRef, forwardRef } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import html2pdf from 'html2pdf.js';
+import Skeleton from '@/components/ui/skeleton';
 
 const BillsPage = () => {
   const { profile } = useAuth();
@@ -16,16 +17,19 @@ const BillsPage = () => {
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [shopDetails, setShopDetails] = useState<any>(null);
   const billRef = useRef<HTMLDivElement>(null);
+  const [loadingBills, setLoadingBills] = useState(true);
 
   useEffect(() => {
     async function fetchBills() {
       if (!profile?.shop_id) return;
+      setLoadingBills(true);
       const { data } = await supabase
         .from('bills')
         .select('*')
         .eq('shop_id', profile.shop_id)
         .order('created_at', { ascending: false });
       if (data) setBills(data);
+      setLoadingBills(false);
     }
     fetchBills();
   }, [profile?.shop_id]);
@@ -106,7 +110,13 @@ const BillsPage = () => {
   return (
     <div className="p-4 w-full">
       <h1 className="text-2xl font-bold mb-4">Bills</h1>
-      {selectedBill ? (
+      {loadingBills ? (
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} height={40} className="w-full mb-2" />
+          ))}
+        </div>
+      ) : selectedBill ? (
         <div>
           <Button variant="outline" onClick={() => setSelectedBill(null)} className="mb-4">← Back to list</Button>
           <div className="flex flex-col items-center justify-center">
@@ -114,13 +124,17 @@ const BillsPage = () => {
             <BillActions selectedBill={selectedBill} billRef={billRef} />
             {/* Bill Preview */}
             <div className="max-w-fit md:max-w-[350px] w-full flex justify-center">
-              <BillPreviewWithRef
-                ref={billRef}
-                selectedBill={selectedBill}
-                shopDetails={shopDetails}
-                profile={profile}
-                amountInWords={amountInWords}
-              />
+              {loadingBills ? (
+                <Skeleton height={400} className="w-full max-w-md" />
+              ) : (
+                <BillPreviewWithRef
+                  ref={billRef}
+                  selectedBill={selectedBill}
+                  shopDetails={shopDetails}
+                  profile={profile}
+                  amountInWords={amountInWords}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -247,6 +261,20 @@ const BillPreviewWithRef = forwardRef<HTMLDivElement, {
           cashReceived={total}
           change={selectedBill.change}
         />
+        {/* Split Payment Breakdown */}
+        {selectedBill.split_payment && (
+          <div className="mt-4 p-2 border rounded bg-gray-50">
+            <div className="font-semibold mb-1">Payment Breakdown</div>
+            <ul className="text-sm">
+              {Object.entries(selectedBill.split_payment).map(([method, amount]) => (
+                <li key={method} className="flex justify-between">
+                  <span className="capitalize">{method}</span>
+                  <span>₹{Number(amount).toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -260,6 +288,16 @@ const BillActions = ({ selectedBill, billRef }: { selectedBill: any, billRef: Re
     content: () => billRef.current,
     documentTitle: `Bill-${selectedBill.bill_number}`,
   } as any);
+
+  // Fallback print handler
+  const handlePrintWithFallback = () => {
+    if (billRef.current) {
+      handlePrint();
+    } else {
+      window.print();
+    }
+  };
+
   // PDF Download handler
   const handleDownloadPDF = () => {
     const element = billRef.current;
@@ -274,7 +312,7 @@ const BillActions = ({ selectedBill, billRef }: { selectedBill: any, billRef: Re
   };
   return (
     <div className="flex gap-2 mb-4">
-      <Button onClick={handlePrint} variant="outline" className="flex items-center gap-1">
+      <Button onClick={handlePrintWithFallback} variant="outline" className="flex items-center gap-1">
         <Printer className="w-4 h-4" /> Print
       </Button>
       <Button onClick={handleDownloadPDF} variant="outline" className="flex items-center gap-1">

@@ -57,7 +57,7 @@ const MobileProductCard = ({ product }: { product: Product }) => {
 const POSProductCard = ({ product }: { product: Product }) => {
   const { addItem } = useCart();
   return (
-    <div className="flex items-center bg-white border border-indigo-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 p-2 pr-4 min-h-[90px] group relative">
+    <div className="flex items-center bg-white border border-indigo-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 p-2 w-[400]">
       {/* Product Image */}
       <div className="flex-shrink-0 w-16 h-16 bg-gray-100 rounded-lg overflow-hidden mr-3">
         <img
@@ -74,11 +74,11 @@ const POSProductCard = ({ product }: { product: Product }) => {
             <div className="font-bold text-base text-gray-900 truncate mb-0.5">{product.name}</div>
           </div>
           <button
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-lg transition-all duration-150 mt-0.5"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow transition-all duration-150 self-center"
             onClick={(e) => { e.stopPropagation(); addItem(product, 1); playBeep(); }}
             title="Add to Cart"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
           </button>

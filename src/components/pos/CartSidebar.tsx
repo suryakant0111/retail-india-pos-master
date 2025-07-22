@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
 import { CartSection } from '@/components/pos/CartSection';
+import HoldCartButtons from '@/components/pos/HoldCartButtons';
 
 export const CartSidebar = ({
   customers,
   openPaymentDialog,
   refreshCustomers,
-  items
+  items,
+  paymentSettings,
+  currentCart,
+  onResumeCart,
+  onClearCart,
+  onReviewConflicts
 }: any) => {
   const [cartOpen, setCartOpen] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
@@ -18,6 +24,11 @@ export const CartSidebar = ({
           customers={customers}
           openPaymentDialog={openPaymentDialog}
           refreshCustomers={refreshCustomers}
+          paymentSettings={paymentSettings}
+          currentCart={currentCart}
+          onResumeCart={onResumeCart}
+          onClearCart={onClearCart}
+          onReviewConflicts={onReviewConflicts}
         />
       </div>
       {/* Mobile Floating Cart Button and Slide-Over */}
@@ -48,6 +59,11 @@ export const CartSidebar = ({
                 customers={customers}
                 openPaymentDialog={openPaymentDialog}
                 refreshCustomers={refreshCustomers}
+                paymentSettings={paymentSettings}
+                currentCart={currentCart}
+                onResumeCart={onResumeCart}
+                onClearCart={onClearCart}
+                onReviewConflicts={onReviewConflicts}
               />
             </div>
           </div>

@@ -18,6 +18,7 @@ interface Transaction {
   paymentMethod: string;
   customer: string;
   createdAt: Date;
+  splitPayment?: any;
 }
 
 const Transactions = () => {
@@ -28,7 +29,7 @@ const Transactions = () => {
   const { profile } = useProfile();
 
   useEffect(() => {
-    // Fetch transactions from Supabase payments table
+    // Fetch transactions from Supabase payments table and join with invoices for split_payment
     const fetchPayments = async () => {
       try {
         let query = supabase.from('payments').select('*');
@@ -40,6 +41,17 @@ const Transactions = () => {
           throw error;
         }
         if (data) {
+          // Fetch split_payment from invoices
+          const invoiceIds = data.map((p: any) => p.order_id).filter(Boolean);
+          let splitMap: Record<string, any> = {};
+          if (invoiceIds.length > 0) {
+            const { data: invoices } = await supabase.from('invoices').select('id,split_payment').in('id', invoiceIds);
+            if (invoices) {
+              for (const inv of invoices) {
+                splitMap[inv.id] = inv.split_payment;
+              }
+            }
+          }
           // Map payments to Transaction interface
           const processedTransactions = data.map((payment: any) => ({
             id: payment.id,
@@ -47,8 +59,9 @@ const Transactions = () => {
             invoiceNumber: payment.order_id ? payment.order_id.slice(-8) : 'N/A',
             amount: Number(payment.amount),
             paymentMethod: payment.method || 'unknown',
-            customer: payment.customer || 'N/A', // If you add customer_id, you can join for name
+            customer: payment.customer || 'N/A',
             createdAt: new Date(payment.created_at),
+            splitPayment: splitMap[payment.order_id] || null
           }));
           setTransactions(processedTransactions);
         } else {
@@ -218,6 +231,13 @@ const Transactions = () => {
                         currency: 'INR',
                       }).format(transaction.amount)}
                     </TableCell>
+                    {transaction.splitPayment ? (
+                      <TableCell className="text-xs text-muted-foreground">
+                        {Object.entries(transaction.splitPayment)
+                          .map(([method, amount]) => `${method.charAt(0).toUpperCase() + method.slice(1)}: ₹${Number(amount).toFixed(2)}`)
+                          .join(', ')}
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               ) : (

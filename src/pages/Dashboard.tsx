@@ -213,7 +213,7 @@ const Dashboard = () => {
     if (!profile?.shop_id) return;
     const { data, error } = await supabase
       .from('invoices')
-      .select('*')
+      .select('*, split_payment')
       .eq('shop_id', profile.shop_id)
       .order('createdAt', { ascending: false });
     if (error) {
@@ -222,7 +222,7 @@ const Dashboard = () => {
       setLoading(false);
       return;
     }
-    setInvoices(data || []);
+    setInvoices((data || []).map(inv => ({ ...inv, split_payment: inv.split_payment })));
     
     // Calculate average order value
     if (data && data.length > 0) {
@@ -409,6 +409,20 @@ const Dashboard = () => {
       matches = matches && (inv.items || []).some((item: any) => item.product?.name === filterTransactionProduct);
     }
     return matches;
+  });
+
+  // Aggregate split payments from filteredDisplayInvoices
+  const splitTotals = { cash: 0, upi: 0, card: 0 };
+  filteredDisplayInvoices.forEach(inv => {
+    if (inv.split_payment) {
+      Object.entries(inv.split_payment).forEach(([method, amount]) => {
+        if (splitTotals.hasOwnProperty(method)) {
+          splitTotals[method] += Number(amount) || 0;
+        }
+      });
+    } else if (inv.paymentMethod && splitTotals.hasOwnProperty(inv.paymentMethod)) {
+      splitTotals[inv.paymentMethod] += Number(inv.total) || 0;
+    }
   });
 
   // Show individual transactions for chart with time-based filtering
@@ -745,6 +759,50 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
+          <div className="grid gap-6 mb-6 md:grid-cols-4">
+            <Card>
+              <CardHeader className="py-2 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Cash Collected</CardTitle>
+              </CardHeader>
+              <CardContent className="py-2 px-4">
+                <div className="text-2xl font-bold">
+                  {new Intl.NumberFormat('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0,
+                  }).format(splitTotals.cash)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="py-2 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">UPI Collected</CardTitle>
+              </CardHeader>
+              <CardContent className="py-2 px-4">
+                <div className="text-2xl font-bold">
+                  {new Intl.NumberFormat('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0,
+                  }).format(splitTotals.upi)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="py-2 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Card Collected</CardTitle>
+              </CardHeader>
+              <CardContent className="py-2 px-4">
+                <div className="text-2xl font-bold">
+                  {new Intl.NumberFormat('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0,
+                  }).format(splitTotals.card)}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
           <div className="grid gap-6 mt-6 grid-cols-1 lg:grid-cols-3 transition-all duration-300 w-full min-w-[320px]">
             {/* Weekly Sales Chart */}
             <div className="lg:col-span-2 w-full transition-all duration-300">

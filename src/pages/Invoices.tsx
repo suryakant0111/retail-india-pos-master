@@ -8,11 +8,18 @@ import { mockInvoices } from '@/data/mockData';
 import { Search, Eye, Download, Calendar, FileDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { Invoice } from '@/types';
+import { Invoice as InvoiceType } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/useProfile';
+
+interface Invoice extends InvoiceType {
+  split_payment?: Record<string, number>;
+  taxRate?: number;
+  amount_paid?: number;
+  amount_due?: number;
+}
 
 const Invoices = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,11 +64,14 @@ const Invoices = () => {
   const fetchInvoices = async () => {
     setLoading(true);
     if (!profile?.shop_id) return;
-    const { data, error } = await supabase.from('invoices').select('*').eq('shop_id', profile.shop_id);
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*, split_payment')
+      .eq('shop_id', profile.shop_id);
     if (error) {
       console.error('Error fetching invoices:', error);
     } else if (data) {
-      setInvoices(data.map(inv => ({ ...inv, createdAt: new Date(inv.createdAt) })));
+      setInvoices(data.map(inv => ({ ...inv, createdAt: new Date(inv.createdAt), split_payment: inv.split_payment })));
     }
     setLoading(false);
   };
@@ -70,16 +80,16 @@ const Invoices = () => {
     fetchInvoices();
   }, [profile?.shop_id]);
   
-  // Filter invoices based on search term and status
-  const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = 
-      (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (invoice.customer && invoice.customer.name && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = statusFilter === 'all' || invoice.paymentStatus === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Filter invoices based on search term and status, then sort by createdAt descending
+  const filteredInvoices = invoices
+    .filter(invoice => {
+      const matchesSearch = 
+        (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (invoice.customer && invoice.customer.name && invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesStatus = statusFilter === 'all' || invoice.paymentStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
   
   // Helper: Amount in words (simple, can be improved)
   const amountInWords = (amount: number): string => {
@@ -335,7 +345,10 @@ const Invoices = () => {
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Paid</TableHead>
+                <TableHead className="text-right">Due</TableHead>
                 <TableHead className="text-right">Payment Method</TableHead>
+                <TableHead className="text-right">Split Payment</TableHead>
                 <TableHead className="text-right">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -348,14 +361,23 @@ const Invoices = () => {
                     <TableCell>{invoice.customer ? invoice.customer.name : 'Walk-in Customer'}</TableCell>
                     <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">₹{invoice.total.toLocaleString('en-IN', {maximumFractionDigits: 2})}</TableCell>
+                    <TableCell className="text-right text-green-700 font-semibold">₹{(invoice.amount_paid ?? invoice.total).toLocaleString('en-IN', {maximumFractionDigits: 2})}</TableCell>
+                    <TableCell className="text-right text-amber-700 font-semibold">₹{(invoice.amount_due ?? 0).toLocaleString('en-IN', {maximumFractionDigits: 2})}</TableCell>
                     <TableCell className="text-right capitalize">{invoice.paymentMethod}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {invoice.split_payment ?
+                        Object.entries(invoice.split_payment)
+                          .map(([method, amount]) => `${method.charAt(0).toUpperCase() + method.slice(1)}: ₹${Number(amount).toFixed(2)}`)
+                          .join(', ')
+                        : ''}
+                    </TableCell>
                     <TableCell className="text-right">
                       <span className={`px-2 py-1 rounded-full text-xs ${
                         invoice.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 
                         invoice.paymentStatus === 'partial' ? 'bg-amber-100 text-amber-800' : 
-                        'bg-red-100 text-red-800'
+                        invoice.paymentStatus === 'pending' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)}
+                        {invoice.paymentStatus === 'partial' ? 'Partial' : invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">

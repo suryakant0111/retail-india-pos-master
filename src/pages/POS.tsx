@@ -32,10 +32,19 @@ import { addOfflineSale, getOfflineSales, removeOfflineSale, OfflineSale, addOff
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { getOfflineConflicts, clearOfflineConflicts } from '@/lib/offlineDB';
 import { useStockBatches } from '@/contexts/StockBatchContext';
+import Skeleton from '@/components/ui/skeleton';
+import HoldCartButtons from '@/components/pos/HoldCartButtons';
+
+// Add this at the top of the file (after imports)
+declare global {
+  interface Window {
+    _lastSplitPayment?: any;
+  }
+}
 
 const POS = () => {
   const pos = usePOSData();
-  const { discountValue, discountType } = useCart();
+  const { discountValue, discountType, setCart } = useCart();
   const { updateBatchId } = useCart();
   const { 
     items, 
@@ -98,7 +107,10 @@ const POS = () => {
     fetchRecentSales,
     fetchRecentInvoices,
     refreshCustomers,
-    handleAddNewCustomer
+    handleAddNewCustomer,
+    loadingProducts,
+    loadingCustomers,
+    loadingSettings,
   } = pos;
   
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(cat => cat && cat.trim() !== '')))];
@@ -152,15 +164,40 @@ const POS = () => {
     });
   };
   
-  const handlePaymentConfirmed = (status: 'paid' | 'pending') => {
-    if (typeof status !== 'string') {
-      console.error('handlePaymentConfirmed called with non-string status:', status);
+  const handlePaymentConfirmed = (result: any) => {
+    let status: 'paid' | 'pending' | 'partial' = 'paid';
+    let split: any = undefined;
+    let amount_paid: number | undefined = undefined;
+    let amount_due: number | undefined = undefined;
+    if (typeof result === 'string') {
+      status = result as 'paid' | 'pending' | 'partial';
+    } else if (typeof result === 'object' && result !== null) {
+      status = (result.status || 'paid') as 'paid' | 'pending' | 'partial';
+      split = result.split;
+      amount_paid = result.amount_paid;
+      amount_due = result.amount_due;
+    } else {
+      console.error('handlePaymentConfirmed called with invalid result:', result);
       return;
     }
-    setPaymentStatus(status);
+    setPaymentStatus(status === 'partial' ? 'pending' : status);
     setPaymentSuccess(true);
     setShowReceiptDialog(true); // Always show the receipt dialog for all payment methods
     // Optionally, you can call finalizeTransaction(status) after printing/closing the dialog
+    // Save split info for invoice if present
+    if (split) {
+      (window as any)._lastSplitPayment = split;
+    }
+    // Save paid/due amounts for invoice if present
+    if (amount_paid !== undefined) {
+      (window as any)._lastAmountPaid = amount_paid;
+    }
+    if (amount_due !== undefined) {
+      (window as any)._lastAmountDue = amount_due;
+    }
+    if (status !== 'paid') {
+      (window as any)._lastPaymentStatus = status;
+    }
   };
   
   const finalizeTransaction = async (status: 'paid' | 'pending' = 'paid') => {
@@ -375,7 +412,30 @@ const POS = () => {
         });
       } else {
         // Insert invoice into Supabase
-        const { error: invoiceInsertError } = await supabase.from('invoices').insert([newInvoice]);
+        // Attach split_payment and partial payment info if present
+        let split_payment = undefined;
+        let amount_paid = undefined;
+        let amount_due = undefined;
+        let paymentStatus = status;
+        if ((window as any)._lastSplitPayment) {
+          split_payment = (window as any)._lastSplitPayment;
+          delete (window as any)._lastSplitPayment;
+        }
+        if ((window as any)._lastAmountPaid !== undefined) {
+          amount_paid = (window as any)._lastAmountPaid;
+          delete (window as any)._lastAmountPaid;
+        }
+        if ((window as any)._lastAmountDue !== undefined) {
+          amount_due = (window as any)._lastAmountDue;
+          delete (window as any)._lastAmountDue;
+        }
+        if ((window as any)._lastPaymentStatus) {
+          paymentStatus = (window as any)._lastPaymentStatus;
+          delete (window as any)._lastPaymentStatus;
+        }
+        const { error: invoiceInsertError } = await supabase.from('invoices').insert([
+          { ...newInvoice, split_payment, amount_paid, amount_due, paymentStatus }
+        ]);
         if (invoiceInsertError) {
           console.error('Error inserting invoice:', invoiceInsertError, newInvoice);
           toast({
@@ -475,12 +535,16 @@ const POS = () => {
                 taxes: taxes,
                 total: totalValue,
                 payment_method: paymentMethod,
-                cash_received: totalValue, // Always use correct total
+                cash_received: amount_paid !== undefined ? amount_paid : totalValue,
                 change: 0, // You can adjust this if you track change
                 created_by: profile?.id,
                 cashier: profile?.name || '',
                 business_details: businessDetails,
                 payment_details: safePaymentSettings,
+                split_payment,
+                amount_paid,
+                amount_due,
+                paymentStatus
               }
             ]);
             if (billInsertError) {
@@ -595,16 +659,18 @@ const POS = () => {
   
   const handlePrintReceipt = () => {
     setIsPrintingReceipt(true);
-    
+
     setTimeout(() => {
       setIsPrintingReceipt(false);
-      
+
+      window.print(); // Open the browser print dialog
+
       toast({
         title: "Receipt Printed",
         description: "Receipt has been sent to the printer",
         variant: "success",
       });
-      
+
       finalizeTransaction();
     }, 1500);
   };
@@ -666,8 +732,28 @@ const POS = () => {
   //   });
   // };
 
+  // Helper to set the entire cart from a held cart
+  const setCartFromHeld = (held: any) => {
+    setCart({
+      items: held.items || [],
+      customer: held.customer || null,
+      discountValue: held.discountValue || 0,
+      discountType: held.discountType || 'percentage',
+      taxRate: held.taxRate || 0
+    });
+  };
+
   return (
     <>
+      {/* Top Bar Header */}
+      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-200 w-full">
+        <div className="flex items-center px-4 py-3">
+          <div className="flex items-center">
+            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-[#2954e0] text-white font-bold mr-2 text-lg">Z:</span>
+            <span className="text-[#2954e0] font-semibold text-xl px-4 py-2 bg-white rounded-xl">zapretail</span>
+          </div>
+        </div>
+      </header>
       {/* Offline Mode Banner */}
       {isOffline && (
         <div className="w-full bg-yellow-400 text-black text-center py-2 font-semibold z-50">
@@ -689,11 +775,6 @@ const POS = () => {
         </button>
       </div> */}
       {/* Conflict Review Button and Modal */}
-      <div className="fixed top-24 right-4 z-50">
-        <Button onClick={loadConflicts} variant="outline">
-          Review Conflicts
-        </Button>
-      </div>
       {showConflicts && (
         <Dialog open={showConflicts} onOpenChange={setShowConflicts}>
           <DialogContent>
@@ -738,15 +819,6 @@ const POS = () => {
           </DialogContent>
         </Dialog>
       )}
-      {/* Top Bar Header */}
-      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-200 w-full">
-        <div className="flex items-center px-4 py-3">
-          <div className="flex items-center">
-            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-[#2954e0] text-white font-bold mr-2 text-lg">Z:</span>
-            <span className="text-[#2954e0] font-semibold text-xl px-4 py-2 bg-white rounded-xl">zapretail</span>
-          </div>
-        </div>
-      </header>
       {/* Main Content */}
       <div className="flex flex-col lg:flex-row h-full min-h-screen relative">
         <div className="p-2 sm:p-4 overflow-auto flex-1 min-w-0">
@@ -771,12 +843,20 @@ const POS = () => {
                 {cartType === 'pos' ? 'Retail POS Layout' : 'Excel-style Table Layout'}
               </div>
             </div>
-            <ProductGrid
-              filteredProducts={filteredProducts}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              recentInvoices={recentInvoices}
-            />
+            {loadingProducts ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} height={180} className="w-full mb-2" />
+                ))}
+              </div>
+            ) : (
+              <ProductGrid
+                filteredProducts={filteredProducts}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                recentInvoices={recentInvoices}
+              />
+            )}
             <div className="mt-2">
               <ProductSearch 
                 products={products}
@@ -823,13 +903,21 @@ const POS = () => {
               products={products}
               onSelectProduct={handleQuickAddProduct}
             />
-            <ProductGrid
-              filteredProducts={filteredProducts}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              recentInvoices={recentInvoices}
-              usePOSCard={true}
-            />
+            {loadingProducts ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} height={180} className="w-full mb-2" />
+                ))}
+              </div>
+            ) : (
+              <ProductGrid
+                filteredProducts={filteredProducts}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                recentInvoices={recentInvoices}
+                usePOSCard={true}
+              />
+            )}
           </div>
           {/* Excel Cart - Shows below products when active (unchanged) */}
           {cartType === 'excel' && (
@@ -871,6 +959,17 @@ const POS = () => {
                 openPaymentDialog={openPaymentDialog}
                 refreshCustomers={refreshCustomers}
             items={items}
+            paymentSettings={paymentSettings}
+            currentCart={{
+              items,
+              customer,
+              discountValue,
+              discountType,
+              taxRate
+            }}
+            onResumeCart={setCartFromHeld}
+            onClearCart={clearCart}
+            onReviewConflicts={loadConflicts}
           />
         )}
         
@@ -886,6 +985,7 @@ const POS = () => {
           paymentSuccess={paymentSuccess}
           onPaymentConfirmed={handlePaymentConfirmed}
           generateReference={generateReference}
+          upiId={paymentSettings.upiId}
         />
 
         {/* Payment Status Selection Dialog */}
@@ -917,6 +1017,9 @@ const POS = () => {
           onAddCustomer={handleAddNewCustomer}
           refreshCustomers={refreshCustomers}
         />
+
+        {/* Hold/Resume Cart Buttons */}
+        {/* Removed as it's now in the top utility bar */}
       </div>
 
     </>

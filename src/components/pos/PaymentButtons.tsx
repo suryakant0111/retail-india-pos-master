@@ -6,11 +6,17 @@ import { Wallet, IndianRupee, CreditCard } from 'lucide-react';
 interface PaymentButtonsProps {
   disabled: boolean;
   onPaymentMethodSelect: (method: 'cash' | 'upi' | 'card') => void;
+  paymentSettings?: {
+    enableUpi?: boolean;
+    enableCard?: boolean;
+    enableCash?: boolean;
+  };
 }
 
 export const PaymentButtons: React.FC<PaymentButtonsProps> = ({
   disabled,
-  onPaymentMethodSelect
+  onPaymentMethodSelect,
+  paymentSettings = { enableUpi: true, enableCard: true, enableCash: true }
 }) => {
   // Create safer handler functions that check for onPaymentMethodSelect
   const handleCashPayment = () => {
@@ -33,31 +39,35 @@ export const PaymentButtons: React.FC<PaymentButtonsProps> = ({
 
   return (
     <div className="flex flex-col gap-2">
-      <Button 
-        disabled={disabled} 
-        onClick={handleCashPayment}
-        className="w-full"
-      >
-        <Wallet className="mr-2 h-4 w-4" /> Pay with Cash
-      </Button>
-      
-      <Button 
-        disabled={disabled} 
-        onClick={handleUpiPayment}
-        variant="outline"
-        className="w-full"
-      >
-        <IndianRupee className="mr-2 h-4 w-4" /> Pay with UPI
-      </Button>
-      
-      <Button 
-        disabled={disabled} 
-        onClick={handleCardPayment}
-        variant="outline"
-        className="w-full"
-      >
-        <CreditCard className="mr-2 h-4 w-4" /> Pay with Card
-      </Button>
+      {paymentSettings.enableCash !== false && (
+        <Button 
+          disabled={disabled} 
+          onClick={handleCashPayment}
+          className="w-full"
+        >
+          <Wallet className="mr-2 h-4 w-4" /> Pay with Cash
+        </Button>
+      )}
+      {paymentSettings.enableUpi !== false && (
+        <Button 
+          disabled={disabled} 
+          onClick={handleUpiPayment}
+          variant="outline"
+          className="w-full"
+        >
+          <IndianRupee className="mr-2 h-4 w-4" /> Pay with UPI
+        </Button>
+      )}
+      {paymentSettings.enableCard !== false && (
+        <Button 
+          disabled={disabled} 
+          onClick={handleCardPayment}
+          variant="outline"
+          className="w-full"
+        >
+          <CreditCard className="mr-2 h-4 w-4" /> Pay with Card
+        </Button>
+      )}
     </div>
   );
 };
