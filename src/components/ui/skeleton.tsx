@@ -1,4 +1,3 @@
-// src/components/ui/Skeleton.tsx
 import React from 'react';
 
 interface SkeletonProps {
