@@ -32,7 +32,7 @@ import { addOfflineSale, getOfflineSales, removeOfflineSale, OfflineSale, addOff
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { getOfflineConflicts, clearOfflineConflicts } from '@/lib/offlineDB';
 import { useStockBatches } from '@/contexts/StockBatchContext';
-import Skeleton from '@/components/ui/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import HoldCartButtons from '@/components/pos/HoldCartButtons';
 
 // Add this at the top of the file (after imports)

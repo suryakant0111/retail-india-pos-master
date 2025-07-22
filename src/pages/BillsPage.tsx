@@ -9,7 +9,7 @@ import React, { useRef, forwardRef } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import html2pdf from 'html2pdf.js';
-import Skeleton from '@/components/ui/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const BillsPage = () => {
   const { profile } = useAuth();
